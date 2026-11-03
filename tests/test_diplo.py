@@ -497,6 +497,8 @@ def test_broken_promise_scenario_mechanics(tmp_path):
     assert ab["phases"] and " - " in ab["phases"][0]["asked"]
     assert ab["phases"][0]["tempting"]                  # in 1901 there are open neutral centers to offer
     assert ab["compliance_rate_later"] in (0.0, None)   # the fake holds everything, so it never takes the bait
+    assert ab["traps_fallen_for"] == 0 and ab["centers_given_away"] == 0
+    assert ab["offers_taken_in_substance"].startswith("0/")
     assert len(ab["trust_in_adversary"]) == len(ab["phases"]) and set(ab["trust_in_adversary"]) == {5}
     ev = [json.loads(l) for l in open(tmp_path / "abuser" / "events.jsonl")]
     ger = [e for e in ev if e["event"] == "orders" and e["power"] == "GERMANY" and e["phase"].endswith("M")]
