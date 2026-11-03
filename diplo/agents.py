@@ -232,7 +232,8 @@ class LLMAgent(Agent):
         msgs = [m for m in data.get("messages", []) if m.get("to") in others][:MAX_MESSAGES_PER_ROUND]
         bad = self._illegal_in(msgs, snap)
         self.last_negotiation = {"first_pass_illegal": sum(len(b) for b in bad.values()),
-                                 "repaired": False, "dropped": 0}
+                                 "repaired": False, "dropped": 0,
+                                 "illegal": sorted({o for b in bad.values() for o in b})}
         if not bad:
             return msgs
 

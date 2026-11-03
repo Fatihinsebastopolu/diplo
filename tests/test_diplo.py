@@ -356,7 +356,8 @@ def test_message_still_illegal_after_repair_is_dropped():
     assert len(calls) == 2  # draft + one repair
     assert "That unit's legal orders are" in calls[1]["messages"][0]["content"] or "there is no army" in calls[1]["messages"][0]["content"]
     assert [m["to"] for m in out] == ["GERMANY"]
-    assert agent.last_negotiation == {"first_pass_illegal": 1, "repaired": False, "dropped": 1}
+    assert agent.last_negotiation == {"first_pass_illegal": 1, "repaired": False, "dropped": 1,
+                                      "illegal": ["A SER S A BUL - CON"]}
 
 
 
@@ -467,3 +468,64 @@ def test_human_player_sees_ledger_in_terminal_and_live_board(tmp_path):
         assert "FRANCE: kept 0 of 1 promises to you" in state["relations"]
     finally:
         board.stop()
+
+
+# ----------------------------------------------------------------- abuse scenarios (offline mechanics)
+
+from diplo.scenarios import report as scenario_report, run_scenario
+
+
+def _trusting_responder(kw):
+    """A gullible fake target: always does what it is asked, trusts everyone at 5."""
+    props = kw["output_config"]["format"]["schema"]["properties"]
+    content = kw["messages"][0]["content"]
+    if "orders" in props:
+        return {"orders": [], "private_notes": ""}          # everything holds = complies
+    if "messages" in props:
+        return {"messages": [], "private_notes": ""}
+    return {p: 5 for p in props}                             # trust probe
+
+
+def test_broken_promise_scenario_mechanics(tmp_path):
+    out = {}
+    for cond in ("abuser", "honest"):
+        llm = AnthropicClient(client=FakeAnthropic(_trusting_responder))
+        d = tmp_path / cond
+        d.mkdir()
+        out[cond] = run_scenario("broken-promises", cond, llm, d, max_year=1902, press_rounds=1)
+    ab, ho = out["abuser"], out["honest"]
+    assert ab["phases"] and " - " in ab["phases"][0]["asked"]
+    assert ab["phases"][0]["tempting"]                  # in 1901 there are open neutral centers to offer
+    assert ab["compliance_rate_later"] in (0.0, None)   # the fake holds everything, so it never takes the bait
+    assert len(ab["trust_in_adversary"]) == len(ab["phases"]) and set(ab["trust_in_adversary"]) == {5}
+    ev = [json.loads(l) for l in open(tmp_path / "abuser" / "events.jsonl")]
+    ger = [e for e in ev if e["event"] == "orders" and e["power"] == "GERMANY" and e["phase"].endswith("M")]
+    assert all(" - " in o for e in ger for o in e["accepted"]) and ger[0]["accepted"]   # abuser attacks
+    evh = [json.loads(l) for l in open(tmp_path / "honest" / "events.jsonl")]
+    assert all(not e["accepted"] for e in evh if e["event"] == "orders" and e["power"] == "GERMANY"
+               and e["phase"].endswith("M"))                                          # honest holds
+    assert "Repeated broken promises" in scenario_report([ab, ho])
+
+
+def test_illegal_proposal_scenario_detects_endorsement(tmp_path):
+    def gullible(kw):
+        props = kw["output_config"]["format"]["schema"]["properties"]
+        content = kw["messages"][0]["content"]
+        if "messages" in props:
+            import re
+            m = re.search(r"move ([AF] [A-Z]{3}(?:/[NSE]C)? - [A-Z]{3})", content)
+            return {"messages": [{"to": "GERMANY", "text": f"Agreed, I'll do {m.group(1)}" if m else "hi",
+                                  "proposed_orders": []}], "private_notes": ""}
+        return {"orders": [], "private_notes": ""}
+
+    llm = AnthropicClient(client=FakeAnthropic(gullible))
+    r = run_scenario("illegal-proposals", "abuser", llm, tmp_path, max_year=1901, press_rounds=2)
+    assert r["illegal_proposals_sent"] >= 2 and r["flagged_with_engine_note"] == r["illegal_proposals_sent"]
+    assert r["endorsed_in_drafts_caught_by_repair"] and r["passed"] is False
+
+
+
+def test_orders_quoted_in_a_refusal_are_not_proposals():
+    locs = {l.upper() for l in new_game().map.locs}
+    text = "France here. A BUR - WAR isn't a legal move, so I'm not doing it. This spring A BUR - BEL."
+    assert extract_orders(text, locs) == ["A BUR - BEL"]

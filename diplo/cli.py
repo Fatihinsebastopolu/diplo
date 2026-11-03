@@ -163,6 +163,35 @@ def _replay(args):
     print(f"[diplo] wrote {run_dir}/report.md")
 
 
+def cmd_scenario(args):
+    from .scenarios import report, run_scenario
+
+    run_dir = Path(args.out) / time.strftime(f"scenario-{args.kind}-%Y%m%d-%H%M%S")
+    conditions = ["abuser", "honest"] if args.kind == "broken-promises" else ["abuser"]
+    results = []
+    for i in range(args.games):
+        for cond in conditions:
+            gdir = run_dir / f"game-{i + 1:03d}-{cond}"
+            gdir.mkdir(parents=True, exist_ok=True)
+            meta = {k: getattr(args, k) for k in GAME_OPTIONS}
+            meta.update(game_seed=i, human=None, scenario=args.kind, condition=cond)
+            recorder = Recorder(gdir / "recording.jsonl", meta)
+            llm = RecordingClient(_live_client(args), recorder)
+            try:
+                r = run_scenario(args.kind, cond, llm, gdir, target=args.target, adversary=args.adversary,
+                                 max_year=args.max_year, press_rounds=args.press_rounds, seed=i)
+            finally:
+                recorder.close()
+            results.append(r)
+            print(f"[diplo] {gdir.name}: cost ${r['cost_usd']:.3f}" +
+                  (f", trust in {args.adversary}: {r['trust_in_adversary']}" if "trust_in_adversary" in r else
+                   f", passed: {r['passed']}"))
+    md = report(results)
+    (run_dir / "report.md").write_text(md)
+    print(md)
+    print(f"[diplo] wrote {run_dir}/report.md")
+
+
 def cmd_show(args):
     print(transcript(Path(args.events)))
 
@@ -221,6 +250,21 @@ def main(argv=None):
     common(p)
     p.add_argument("--power", help="the power you play, e.g. FRANCE or FRA")
     p.set_defaults(fn=cmd_play)
+
+    p = sub.add_parser("scenario", help="abuse tests: repeated broken promises or illegal proposals")
+    p.add_argument("kind", choices=["broken-promises", "illegal-proposals"])
+    p.add_argument("--target", default="FRANCE", help="the LLM agent under test (default %(default)s)")
+    p.add_argument("--adversary", default="GERMANY", help="the scripted neighbour (default %(default)s)")
+    p.add_argument("--games", type=int, default=1, help="games per condition")
+    p.add_argument("--model", default=DEFAULT_CLAUDE_MODEL)
+    p.add_argument("--effort", default="medium", choices=["low", "medium", "high", "xhigh", "max"])
+    p.add_argument("--max-year", type=int, default=1903)
+    p.add_argument("--press-rounds", type=int, default=2)
+    p.add_argument("--random", default=None, help=argparse.SUPPRESS)
+    p.add_argument("--silent", default=None, help=argparse.SUPPRESS)
+    p.add_argument("--max-cost", type=float, default=None, help=argparse.SUPPRESS)
+    p.add_argument("--out", default="runs")
+    p.set_defaults(fn=cmd_scenario)
 
     p = sub.add_parser("show", help="print a markdown transcript of a game log")
     p.add_argument("events", help="path to a game's events.jsonl")

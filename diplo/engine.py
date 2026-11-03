@@ -233,14 +233,22 @@ _ORDER_RE = re.compile(
 )
 
 
+_NEGATION = re.compile(r"N'T\b|\b(NOT|NEVER|ILLEGAL|IMPOSSIBLE|CANNOT)\b")
+
+
 def extract_orders(text: str, valid_locs: set[str]) -> list[str]:
-    """Find order-like phrases (e.g. "a par - bur") in a human's free-text message.
+    """Find order-like phrases (e.g. "a par - bur") in a free-text message.
 
     Only phrases whose province codes are real map locations count, so ordinary
-    words are not mistaken for orders.
+    words are not mistaken for orders. Orders quoted in a sentence that negates
+    them ("A BUR - WAR isn't legal, so I'm not doing it") are not proposals and
+    are skipped.
     """
     found = []
-    for m in _ORDER_RE.finditer(normalize_order(text)):
+    normalized = normalize_order(text.replace("\u2019", "'"))
+    sentences = re.split(r"(?<=[.!?;])\s+", normalized)
+    kept_text = " ".join(s for s in sentences if not _NEGATION.search(s))
+    for m in _ORDER_RE.finditer(kept_text):
         order = m.group(0)
         locs = [t for t in order.split() if len(t) >= 3 and t != "VIA"]
         if all(t in valid_locs for t in locs) and order not in found:
