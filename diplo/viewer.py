@@ -86,7 +86,8 @@ def activity(views: list[PhaseView]) -> dict[str, dict[str, int]]:
     A unit with no order counts as holding. 'dislodged' counts the power's own
     units that were dislodged.
     """
-    t = {p: {"moves": 0, "supports": 0, "convoys": 0, "holds": 0, "dislodged": 0} for p in POWERS}
+    t = {p: {"moves": 0, "supports": 0, "ally_supports": 0, "convoys": 0, "holds": 0, "dislodged": 0}
+         for p in POWERS}
     for v in views:
         if not v.phase.endswith("M"):
             continue
@@ -98,6 +99,10 @@ def activity(views: list[PhaseView]) -> dict[str, dict[str, int]]:
                     t[p]["holds"] += 1
                 elif " S " in o:
                     t[p]["supports"] += 1
+                    parts = o.split()
+                    target = _owner(f"{parts[3]} {parts[4]}", v.units) if len(parts) >= 5 else None
+                    if target and target != p:
+                        t[p]["ally_supports"] += 1  # support given to another power's unit
                 elif " C " in o:
                     t[p]["convoys"] += 1
                 else:

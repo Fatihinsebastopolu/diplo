@@ -21,6 +21,8 @@ from .engine import (
     snapshot,
 )
 from .llm import LLMError
+from .relations import Ledger
+from .viewer import PhaseView
 
 
 class GameRunner:
@@ -53,6 +55,7 @@ class GameRunner:
         self.max_cost = max_cost
         self.stopped_reason = None
         self.press: list[Press] = []
+        self.ledger = Ledger(list(self.game.powers))
         self.events = open(self.out_dir / "events.jsonl", "w", encoding="utf-8")
         self.stats = {
             p: {
@@ -190,15 +193,25 @@ class GameRunner:
             all_orders = g.get_all_possible_orders()
             alive = [p for p in g.powers if not g.powers[p].is_eliminated()]
             snaps = {p: snapshot(g, p, all_orders) for p in alive}
+            for p, s in snaps.items():
+                s.relations_text = self.ledger.text_for(p)
+            units_at_start = {p: list(g.get_units(p)) for p in g.powers}
+            center_owner = {c: p for p in g.powers for c in g.get_centers(p)}
             self._notify("phase_start", g, phase)
             if g.phase_type == "M" and self.press_rounds > 0:
                 legal_any = all_legal_orders(g, all_orders)
                 for r in range(self.press_rounds):
                     self._press_round(r, snaps, legal_any)
             needs_orders = {p: s for p, s in snaps.items() if s.legal_by_loc}
-            self._order_round(needs_orders)
+            outcomes = self._order_round(needs_orders)
             self._notify("orders_set", g, phase)
             g.process()
+            self.ledger.update(PhaseView(
+                phase=phase, units=units_at_start, centers={},
+                orders={p: list(outcomes[p].accepted) if p in outcomes else [] for p in g.powers},
+                press=[asdict(m) for m in self.press if m.phase == phase],
+                results={str(u): [str(x) for x in rs if str(x)] for u, rs in g.result_history[phase].items()},
+            ), center_owner)
             self.log("phase_result", phase=phase, centers=sc_counts(g),
                      results={str(u): [str(x) for x in rs] for u, rs in g.result_history[phase].items() if rs})
             if self.llm is not None:

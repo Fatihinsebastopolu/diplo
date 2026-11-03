@@ -111,7 +111,8 @@ def aggregate(run_dir: Path) -> str:
         md.append("- No LLM agents in these games (cost 0).")
     md.append(f"- Wall time per game: mean {sum(secs) / n:.0f}s, max {max(secs):.0f}s")
     claims = []
-    act = {p: {"moves": 0, "supports": 0, "convoys": 0, "holds": 0, "dislodged": 0} for p in POWERS}
+    act = {p: {"moves": 0, "supports": 0, "ally_supports": 0, "convoys": 0, "holds": 0, "dislodged": 0}
+           for p in POWERS}
     for ev_path in sorted(Path(run_dir).rglob("events.jsonl")):
         views = list(_views(load_events(ev_path)).values())
         claims += [c for v in views for c in analyse_promises(v)]
@@ -121,14 +122,17 @@ def aggregate(run_dir: Path) -> str:
     md += ["", "## Activity in movement phases", "",
            "What each unit did in movement phases (a unit without an order holds), and how many of "
            "the power's own units were dislodged.", "",
-           "| Power | Moves | Supports | Convoys | Holds | Units dislodged |", "|---|---|---|---|---|---|"]
+           "| Power | Moves | Supports | of which for another power | Convoys | Holds | Units dislodged |",
+           "|---|---|---|---|---|---|---|"]
     for p in POWERS:
         a = act[p]
-        md.append(f"| {p} | {a['moves']} | {a['supports']} | {a['convoys']} | {a['holds']} | {a['dislodged']} |")
+        md.append(f"| {p} | {a['moves']} | {a['supports']} | {a['ally_supports']} | {a['convoys']} | "
+                  f"{a['holds']} | {a['dislodged']} |")
     tot_units = sum(sum(a[k] for k in ("moves", "supports", "convoys", "holds")) for a in act.values())
     active = sum(a["moves"] + a["supports"] + a["convoys"] for a in act.values())
     spreads = [max(s["centers"].values()) - min(s["centers"].values()) for s in summaries]
     md += ["", f"Unit-orders that moved, supported or convoyed: {active}/{tot_units} ({pct(active, tot_units)}); "
+           f"supports given to another power's unit: {sum(a['ally_supports'] for a in act.values())}; "
            f"units dislodged: {sum(a['dislodged'] for a in act.values())}; "
            f"final center spread (max - min) per game: {spreads}."]
     pt = promise_totals(claims)

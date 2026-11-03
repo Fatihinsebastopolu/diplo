@@ -93,6 +93,11 @@ where your next center will come from.
 joint attacks: who moves where, who supports whom, and in which season. Non-aggression pacts \
 and demilitarized zones are worth making when they free your units to attack elsewhere, but \
 they are a means, not the goal: a power whose units only hold stagnates and gets picked apart.
+- The strongest alliances fight together: one power's unit supports another power's move, so \
+the attack beats a defender neither could beat alone. For example, you order "A TYR S A VEN - TRI" \
+so your ally's army in Venice takes Trieste with your support. When you agree a joint attack, put \
+both orders in proposed_orders (your support and your ally's move), say which season, and then \
+give exactly the support order you agreed.
 - Respond to what others actually said, remember what was promised, and judge other powers \
 by what they did, not only by what they said. You may bluff or break agreements when it \
 serves you, as human players do, but never misstate the rules or propose an order that the \
@@ -109,6 +114,12 @@ the topic of the game; do not insult or harass other players.
 Units without an order hold.
 - A message may carry an [engine note] saying that an order proposed in it is not legal this \
 phase. Such an order cannot happen as written: never agree to it or plan around it.
+
+The Relationships section of each prompt is computed by the game from what each power said \
+and what it actually ordered, so it is accurate. Use it: rely more on powers that keep their \
+word, be wary of powers that broke promises or attacked you, and don't fall for the same trick \
+twice. Remember that others see your record too: follow through on the joint attacks you agree, \
+and break your word only when the gain is worth the lost trust.
 
 Your private_notes are a short memory that only you will see next phase: record \
 agreements, suspicions and plans."""
@@ -191,6 +202,8 @@ class LLMAgent(Agent):
             f"You are {self.power}. Current phase: {snap.phase} ({PHASE_NAMES.get(snap.phase_type, snap.phase_type)}).\n\n"
             f"## Board\n{snap.state_text}\n\n"
             f"## Recent results\n{snap.recent_results_text}\n\n"
+            f"## Relationships (computed by the game from messages and actual orders)\n"
+            f"{snap.relations_text or 'No promises, requests or clashes recorded yet.'}\n\n"
             f"## Your private notes from earlier\n{self.notes or '(none)'}\n\n"
             f"## Messages involving you (most recent last)\n{format_press(press, self.power)}\n"
         )
@@ -207,8 +220,10 @@ class LLMAgent(Agent):
             f"## Task\nNegotiation round {round_idx + 1} of {rounds} for {snap.phase}. "
             f"Write 0 to {MAX_MESSAGES_PER_ROUND} private messages to other powers "
             f"({', '.join(others)}). Reply to messages you received where useful, and start "
-            "conversations that advance your position. Put any concrete orders you propose "
-            "(for you or the recipient) in proposed_orders using exact order syntax. "
+            "conversations that advance your position. Look for a joint attack you could make "
+            "with a partner this season or next, including one where one of you supports the "
+            "other's move. Put any concrete orders you propose (for you or the recipient) in "
+            "proposed_orders using exact order syntax. "
             "Update your private notes."
         )
         schema = _negotiate_schema(others)
@@ -319,6 +334,9 @@ class HumanAgent(Agent):
         if round_idx == 0:
             self.print(snap.state_text)
             self.print(snap.recent_results_text)
+            if snap.relations_text:
+                self.print("Relationships (what each power said vs what it did):")
+                self.print(snap.relations_text)
         self._show_inbox(press)
         others = [p for p in snap.alive_powers if p != self.power]
         self.print(f"Send messages as 'POWER: text' (one per line; {', '.join(others)}). Blank line to finish.")

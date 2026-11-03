@@ -336,7 +336,7 @@ def test_activity_counts_unordered_units_as_holds():
     view = PhaseView("S1901M", {p: list(g.get_units(p)) for p in g.powers}, {},
                      {"FRANCE": ["A PAR - BUR", "A MAR S A PAR - BUR"]})
     a = activity([view])
-    assert a["FRANCE"] == {"moves": 1, "supports": 1, "convoys": 0, "holds": 1, "dislodged": 0}
+    assert a["FRANCE"] == {"moves": 1, "supports": 1, "ally_supports": 0, "convoys": 0, "holds": 1, "dislodged": 0}
     assert a["RUSSIA"]["holds"] == 4
 
 
@@ -369,3 +369,58 @@ def test_text_mentions_tolerate_missing_coast_but_structured_proposals_do_not():
     assert illegal_message_orders("your F STP - BOT would bounce", [], legal, locs) == []
     assert illegal_message_orders("hi", ["F STP - BOT"], legal, locs) == ["F STP - BOT"]
     assert illegal_message_orders("I'll do A SER S A BUL - CON", [], legal, locs) == ["A SER S A BUL - CON"]
+
+
+
+def test_activity_counts_support_for_another_power():
+    g = new_game()
+    view = PhaseView("S1901M", {p: list(g.get_units(p)) for p in g.powers}, {},
+                     {"GERMANY": ["A MUN S A PAR - BUR"], "FRANCE": ["A PAR - BUR"]})
+    assert activity([view])["GERMANY"]["ally_supports"] == 1
+
+
+# ----------------------------------------------------------------- relationship ledger
+
+from diplo.relations import Ledger
+
+
+def test_ledger_records_promises_attacks_and_joint_attacks():
+    g = new_game()
+    units = {p: list(g.get_units(p)) for p in g.powers}
+    owners = {c: p for p in g.powers for c in g.get_centers(p)}
+    view = PhaseView(
+        phase="S1901M", units=units, centers={},
+        orders={"FRANCE": ["A PAR - BUR", "F BRE - PIC"], "GERMANY": ["A MUN S A PAR - BUR"],
+                "ITALY": ["A VEN - TRI"], "AUSTRIA": []},
+        press=[_msg("FRANCE", "ENGLAND", ["F BRE - MAO"]),          # broken: France did F BRE - PIC
+               _msg("FRANCE", "GERMANY", ["A PAR - BUR"]),          # kept
+               _msg("GERMANY", "FRANCE", ["A MUN S A PAR - BUR"]),  # kept
+               _msg("ENGLAND", "FRANCE", ["F BRE H"])],             # request, not honored
+        results={},
+    )
+    led = Ledger()
+    led.update(view, owners)
+    eng = led.text_for("ENGLAND")
+    assert "FRANCE: kept 0 of 1 promises to you (broke S1901M: said F BRE - MAO, did F BRE - PIC)" in eng
+    assert "did 0 of 1 things you asked" in eng
+    ger = led.text_for("GERMANY")
+    assert "FRANCE: kept 1 of 1 promises to you" in ger and "fought alongside you 1 time(s)" in ger
+    assert "attacked you 1 time(s) (last S1901M: A VEN - TRI)" in led.text_for("AUSTRIA")
+    assert "you kept 1 of 2 promises to them" not in led.text_for("FRANCE")
+    assert "ENGLAND: you kept 0 of 1 promises to them." in led.text_for("FRANCE")
+    assert led.text_for("RUSSIA") == "No promises, requests or clashes recorded yet."
+
+
+def test_ledger_reaches_agent_prompts(tmp_path):
+    seen = []
+
+    def responder(kw):
+        seen.append(kw["messages"][0]["content"])
+        return scripted_responder(kw)
+
+    llm = AnthropicClient(client=FakeAnthropic(responder))
+    agents = {p: LLMAgent(p, llm) for p in new_game().powers}
+    GameRunner(agents, tmp_path, max_year=1901, press_rounds=1, llm=llm).run()
+    assert all("## Relationships (computed by the game" in c for c in seen)
+    fall = [c for c in seen if "Current phase: F1901M" in c]
+    assert fall and any("promises to you" in c for c in fall)

@@ -54,6 +54,8 @@ class PhaseSnapshot:
     # Every unit's legal orders this phase (all powers), for checking proposals.
     all_legal_by_loc: dict[str, list[str]] = field(default_factory=dict, repr=False)
     valid_locs: frozenset = field(default_factory=frozenset, repr=False)
+    # Kept/broken promises, requests, attacks and joint attacks, as computed by the game.
+    relations_text: str = ""
 
 
 def alive_powers(game: Game) -> list[str]:
