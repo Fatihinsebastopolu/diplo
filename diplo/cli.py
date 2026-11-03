@@ -24,7 +24,7 @@ from .report import aggregate, transcript
 from .runner import GameRunner
 
 # Options that define a game; saved in each recording so --replay can restore them.
-GAME_OPTIONS = ["backend", "model", "effort", "max_year", "press_rounds", "random", "silent", "num_ctx"]
+GAME_OPTIONS = ["backend", "model", "effort", "max_year", "press_rounds", "random", "silent", "num_ctx", "think"]
 
 
 def _powers(values) -> list[str]:
@@ -43,7 +43,8 @@ def _powers(values) -> list[str]:
 
 def _live_client(args):
     if args.backend == "ollama":
-        return OllamaClient(model=args.model, host=args.ollama_host, num_ctx=args.num_ctx)
+        return OllamaClient(model=args.model, host=args.ollama_host, num_ctx=args.num_ctx,
+                            timeout=args.ollama_timeout, think=args.think)
     return AnthropicClient(model=args.model, effort=args.effort)
 
 
@@ -188,6 +189,10 @@ def main(argv=None):
                        help="LLM powers that never send messages (they still read them)")
         p.add_argument("--ollama-host", default=None, help="Ollama URL (default $OLLAMA_HOST or localhost:11434)")
         p.add_argument("--num-ctx", type=int, default=16384, help="Ollama context window (default %(default)s)")
+        p.add_argument("--think", action="store_true",
+                       help="Ollama: let reasoning models think before answering (much slower on CPU)")
+        p.add_argument("--ollama-timeout", type=float, default=600,
+                       help="Ollama: seconds before a call counts as failed (default %(default)s)")
         p.add_argument("--replay", metavar="PATH",
                        help="re-run recorded game(s) from a recording.jsonl or a run directory, with no API calls")
         p.add_argument("--seed", type=int, default=None)

@@ -173,13 +173,14 @@ class OllamaClient(LLMClient):
     backend = "ollama"
 
     def __init__(self, model: str = DEFAULT_OLLAMA_MODEL, host: str | None = None,
-                 num_ctx: int = 16384, timeout: float = 600, transport=None):
+                 num_ctx: int = 16384, timeout: float = 600, think: bool = False, transport=None):
         super().__init__(model)
         self.host = (host or os.environ.get("OLLAMA_HOST") or "http://localhost:11434").rstrip("/")
         if not self.host.startswith("http"):
             self.host = "http://" + self.host
         self.num_ctx = num_ctx
         self.timeout = timeout
+        self.think = think
         self.transport = transport or self._http_post
 
     def _http_post(self, url: str, payload: dict) -> dict:
@@ -190,7 +191,13 @@ class OllamaClient(LLMClient):
                 return json.loads(r.read())
         except urllib.error.HTTPError as e:
             raise LLMError(f"Ollama HTTP {e.code}: {e.read()[:300]!r}") from e
-        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+        except TimeoutError as e:
+            raise LLMError(f"Ollama call timed out after {self.timeout:.0f}s") from e
+        except urllib.error.URLError as e:
+            if isinstance(e.reason, TimeoutError):
+                raise LLMError(f"Ollama call timed out after {self.timeout:.0f}s") from e
+            raise SystemExit(f"Cannot reach Ollama at {self.host} ({e.reason}). Is `ollama serve` running?") from e
+        except ConnectionError as e:
             raise SystemExit(f"Cannot reach Ollama at {self.host} ({e}). Is `ollama serve` running?") from e
 
     def _call(self, system, user, schema, max_tokens):
@@ -199,6 +206,9 @@ class OllamaClient(LLMClient):
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "format": schema,
             "stream": False,
+            # Reasoning models (e.g. Qwen3) think before answering; on a CPU that can take
+            # many minutes per call, so it is off unless --think is given.
+            "think": self.think,
             # Ollama's default context window is small and truncates long prompts silently.
             "options": {"num_ctx": self.num_ctx, "num_predict": min(max_tokens, 4096)},
         }
