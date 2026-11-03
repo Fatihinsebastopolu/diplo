@@ -23,7 +23,7 @@ from .runner import GameRunner
 from .viewer import build_viewer
 
 # Options that define a game; saved in each recording so --replay can restore them.
-GAME_OPTIONS = ["model", "effort", "max_year", "press_rounds", "random", "silent"]
+GAME_OPTIONS = ["model", "effort", "max_year", "press_rounds", "random", "silent", "max_cost"]
 
 
 def _powers(values) -> list[str]:
@@ -96,7 +96,7 @@ def _play_one_game(args, gdir: Path, game_seed: int, human: str | None = None, r
             board.title = f"{'Replay: ' if replay else ''}{'You are ' + human.title() if human else 'Agent-only game'}"
             board._update(title=board.title, viewer=human, messages=[], results=[])
         s = GameRunner(agents, gdir, max_year=args.max_year, press_rounds=args.press_rounds,
-                       llm=llm, config=config, observer=board).run()
+                       llm=llm, config=config, observer=board, max_cost=args.max_cost).run()
     finally:
         if recorder:
             recorder.close()
@@ -107,6 +107,8 @@ def _play_one_game(args, gdir: Path, game_seed: int, human: str | None = None, r
 
 def _print_result(s):
     cost = f", est. cost ${s['usage']['cost_usd']:.3f}" if s["usage"] else ""
+    if s.get("stopped_reason"):
+        cost += f" (stopped early: {s['stopped_reason']})"
     print(f"[diplo]   {s['final_phase']}: {s['centers']}{cost}")
 
 
@@ -200,6 +202,8 @@ def main(argv=None):
                        help="LLM powers that never send messages (they still read them)")
         p.add_argument("--replay", metavar="PATH",
                        help="re-run recorded game(s) from a recording.jsonl or a run directory, with no API calls")
+        p.add_argument("--max-cost", type=float, default=None, metavar="USD",
+                       help="stop a game once its estimated API cost reaches this (checked after each phase)")
         p.add_argument("--live", action="store_true",
                        help="serve a live board at http://localhost:PORT while the game runs")
         p.add_argument("--live-port", type=int, default=8765)

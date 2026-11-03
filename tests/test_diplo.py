@@ -279,3 +279,17 @@ def test_live_board_serves_state_and_hides_other_powers_press(tmp_path):
         assert b"Diplomacy live board" in urllib.request.urlopen(board.url).read()
     finally:
         board.stop()
+
+
+def test_max_cost_stops_game_and_replay_matches(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "_live_client",
+                        lambda a: AnthropicClient(a.model, a.effort, client=FakeAnthropic(scripted_responder)))
+    cli.main(["sim", "--max-year", "1905", "--press-rounds", "1", "--max-cost", "0.01",
+              "--seed", "1", "--out", str(tmp_path / "a")])
+    run = next((tmp_path / "a").iterdir())
+    s = json.loads((run / "game-001" / "summary.json").read_text())
+    assert s["stopped_reason"].startswith("cost limit") and s["final_phase"] != "S1906M"
+    monkeypatch.setattr(cli, "_live_client", None)
+    cli.main(["sim", "--replay", str(run), "--out", str(tmp_path / "b")])
+    r = json.loads(next((tmp_path / "b").rglob("summary.json")).read_text())
+    assert r["final_phase"] == s["final_phase"] and r["stopped_reason"] == s["stopped_reason"]

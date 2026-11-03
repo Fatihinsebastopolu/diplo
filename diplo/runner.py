@@ -34,6 +34,7 @@ class GameRunner:
         map_name: str = "standard",
         workers: int = 7,
         observer=None,
+        max_cost: float | None = None,
     ):
         self.game = new_game(map_name)
         missing = set(self.game.powers) - set(agents)
@@ -48,6 +49,8 @@ class GameRunner:
         self.config = config or {}
         self.workers = workers
         self.observer = observer
+        self.max_cost = max_cost
+        self.stopped_reason = None
         self.press: list[Press] = []
         self.events = open(self.out_dir / "events.jsonl", "w", encoding="utf-8")
         self.stats = {
@@ -182,6 +185,10 @@ class GameRunner:
             if self.llm is not None:
                 self.log("usage", phase=phase, **self.llm.usage.to_dict())
             self._notify("phase_end", g, phase)
+            if self.max_cost is not None and self.llm is not None and self.llm.usage.cost_usd >= self.max_cost:
+                self.stopped_reason = f"cost limit: est. ${self.llm.usage.cost_usd:.2f} >= ${self.max_cost:.2f}"
+                self.log("budget_stop", phase=phase, cost_usd=round(self.llm.usage.cost_usd, 4), max_cost=self.max_cost)
+                break
 
         summary = self._summary(time.time() - start)
         self._notify("game_end", g, summary)
@@ -209,4 +216,5 @@ class GameRunner:
             "stats": self.stats,
             "usage": self.llm.usage.to_dict() if self.llm is not None else None,
             "wall_seconds": round(seconds, 1),
+            "stopped_reason": self.stopped_reason,
         }

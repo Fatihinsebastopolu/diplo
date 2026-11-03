@@ -82,6 +82,7 @@ Common options (for both `sim` and `play`):
 |---|---|
 | `--model` | Claude model ID. The default is `claude-haiku-5-5` (cheap); stronger options are `claude-sonnet-5-5` and `claude-opus-5-5`. |
 | `--replay PATH` | Re-run recorded game(s) with no API calls (see above). |
+| `--max-cost USD` | Stop a game once its estimated API cost reaches this amount. It's checked after each phase, so a game can overshoot by up to one phase's cost. |
 | `--live`, `--live-port`, `--live-delay` | Serve a live board at `http://localhost:8765` (or another port) while the game runs. `--live-delay` pauses after each phase so a replay can be watched. |
 | `--effort` | `low`, `medium` (the default), `high`, `xhigh` or `max`. Higher effort is slower and costs more. |
 | `--max-year` | The game stops after this year's winter adjustments (default 1905). It also stops early on an 18-center solo win. |
