@@ -4,3 +4,6 @@ __pycache__/
 .pytest_cache/
 runs/
 .env
+
+# PNG maps are regenerated locally by `python -m diplo view`; the SVGs are committed
+*.png

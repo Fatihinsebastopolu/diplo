@@ -117,7 +117,8 @@ Each game writes these files to `runs/<run>/game-NNN/`:
   whole-game promise statistics.
 - `maps/NN-<phase>.svg` and `.png`: the same maps as separate images, e.g. for slides.
   The PNGs need the optional `cairosvg` package and the system cairo library. Without
-  them, only the SVGs are written.
+  them, only the SVGs are written. PNGs aren't committed to the repo; run `python -m diplo view
+  results/` to regenerate them.
 - `transcript.md`: a readable version of the same log, including a "Promised vs did"
   list for each phase.
 - `summary.json`: final centers, per-power legality and press statistics, and usage
