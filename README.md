@@ -72,6 +72,9 @@ python -m diplo sim --random A,E,F,G,I,R,T --games 20 --max-year 1910
 # Read a game's log, or aggregate a run of many games
 python -m diplo show runs/sim-.../game-001/events.jsonl
 python -m diplo report runs/sim-.../
+
+# (Re)build the visual viewer, maps, transcript and report for logged games
+python -m diplo view runs/sim-.../
 ```
 
 Common options (for both `sim` and `play`):
@@ -101,14 +104,50 @@ Each game writes these files to `runs/<run>/game-NNN/`:
 
 - `events.jsonl`: every message, order submission (with rejections), phase result and
   usage checkpoint.
-- `transcript.md`: a readable version of the same log.
+- `game.html`: a self-contained viewer that opens in any browser. For each phase it shows
+  a map of the board with the orders drawn on it, every power's centers and orders, a
+  **Promised vs did** table, and the phase's messages. It ends with the final board and
+  whole-game promise statistics.
+- `maps/NN-<phase>.svg`: the same maps as separate images, e.g. for slides.
+- `transcript.md`: a readable version of the same log, including a "Promised vs did"
+  list for each phase.
 - `summary.json`: final centers, per-power legality and press statistics, and usage
   and cost.
 - `saved_game.json`: the game in the `diplomacy` package's standard format, which
   that package's tools can replay and render.
 
 `sim` also writes a `report.md` for the whole run. It covers per-power mean centers,
-wins and survival; legality rates; cost and time per game; and messages per power.
+wins and survival; legality rates; cost and time per game; messages per power; and
+promise keeping.
+
+The viewer and promise analysis are built from `events.jsonl` alone. The logged orders
+are re-applied to a fresh rules engine, and the rebuilt final centers must match the
+log. So `python -m diplo view` works on any game, including games logged before the
+viewer existed.
+
+### How "Promised vs did" is judged
+
+- **Own proposals:** an order a power put in a message's `proposed_orders` for its
+  own unit, compared with the order that unit actually received. Only the latest
+  version sent to each recipient counts, so a plan revised in a later round is judged
+  on the revision.
+- **Requests:** an order proposed for the recipient's unit, compared with what the
+  recipient actually ordered.
+- **Different plans to different powers:** when a power proposes different orders for
+  the same unit to different powers, this is flagged.
+- **Limits:** only exact order matches count, and a unit with no order counts as
+  holding. Proposals about third parties' units are ignored. Promises made only in free
+  text, e.g. "I won't attack you", are not detected.
+
+## Recorded results
+
+`results/` holds two recorded games. Open each `game.html` in a browser, or replay a game
+with `python -m diplo sim --replay results/<dir>`; no key is needed.
+
+| Directory | Agents | Length | Result |
+|---|---|---|---|
+| `claude-haiku-5-5-1903` | All 7 powers on `claude-haiku-5-5`, effort medium, 2 negotiation rounds | 1901–1903, 165 s | 136 API calls, est. $0.135. 0/186 illegal orders, 0/427 illegal proposals, 223 messages. 93% of own-unit proposals carried out; 8 cases of different plans told to different powers. |
+| `ollama-qwen3-4b-1901` | France on local `qwen3:4b` (CPU, thinking off), 6 random powers, 1 negotiation round | 1901, 318 s | $0. Spring orders legal; in fall it reused its spring orders after its units had moved, so 2 orders were illegal, the repair failed, and its units held. 3/6 proposals illegal. Identical generic messages to three powers. |
 
 ## Things to try
 
@@ -127,7 +166,10 @@ These map to the engineering credibility checks in the Milestone 1 brief.
 5. **Cost and quality.** Run the same settings with the default Haiku model, with
    `--model claude-opus-5-5`, and with `--backend ollama`. Compare the cost per game
    and the illegal-order rates in the reports.
-6. **Balance testing.** Run many games with a cheaper model and compare per-power
+6. **Promises.** Open a game's `game.html` and look for "not kept" rows and the
+   "told different powers different plans" warnings. Then compare the per-power
+   promise-keeping rates in `report.md`.
+7. **Balance testing.** Run many games with a cheaper model and compare per-power
    results with the random baseline.
 
 ## How it works
@@ -139,6 +181,7 @@ These map to the engineering credibility checks in the Milestone 1 brief.
 | `diplo/llm.py` | The model backends. The Claude client handles JSON-schema output, prompt caching on the system prompt, refusal handling, server-side fallback (Sonnet/Opus) and token/cost accounting. The Ollama client uses JSON-schema output on a local model. The recorder and replayer save responses and serve them back, keyed by a hash of each request. |
 | `diplo/runner.py` | The game loop. Agents are called in parallel within each round. Every round is simultaneous: all agents see the same messages, and replies appear in the next round. |
 | `diplo/report.py` | The transcript and multi-game report. |
+| `diplo/viewer.py` | Rebuilds a logged game in the engine, renders a map for each phase (with the `diplomacy` package's renderer), analyses promises vs actions, and writes `game.html`. |
 
 Each agent keeps a short memory between phases (`private_notes`, at most 2,000
 characters). It also sees the last 40 messages it sent or received.
@@ -160,8 +203,8 @@ characters). It also sees the last 40 messages it sent or received.
   list are fixed to the standard seven powers.
 - **No time limits.** Negotiation is a fixed number of simultaneous rounds; there are
   no deadlines or real-time chat.
-- **No graphical map.** The human player reads the board as text. `saved_game.json`
-  can be rendered with the `diplomacy` package's tools.
+- **No live map while playing.** In `play` mode the human reads the board as text. The
+  maps exist only in `game.html` after the game.
 - **The legality check can't catch lies.** An agent can still misstate the board in
   free text, or break a promise. The check covers orders and explicit proposals only.
 - **Slow in `play` mode.** The human waits while the six agents' calls run, and each

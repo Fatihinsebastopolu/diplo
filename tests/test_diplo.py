@@ -219,3 +219,53 @@ def test_ollama_request_and_usage():
     assert sent["payload"]["format"] == {"type": "object"} and sent["payload"]["stream"] is False
     assert sent["payload"]["options"]["num_ctx"] == 8192
     assert c.usage.input_tokens == 900 and c.usage.cost_usd == 0
+
+
+# ----------------------------------------------------------------- viewer / promises
+
+from diplo.viewer import PhaseView, analyse_promises, build_viewer, contradictions, promise_totals, rebuild, load_events
+
+
+def _msg(sender, recipient, orders, rnd=0):
+    return {"sender": sender, "recipient": recipient, "proposed_orders": orders, "round": rnd, "text": "", "phase": "S1901M"}
+
+
+def test_promise_analysis():
+    g = new_game()
+    view = PhaseView(
+        phase="S1901M",
+        units={p: list(g.get_units(p)) for p in g.powers},
+        centers={},
+        orders={"FRANCE": ["A PAR - BUR"], "ENGLAND": ["F LON - NTH"]},
+        press=[
+            _msg("FRANCE", "ENGLAND", ["A PAR - PIC"], rnd=0),   # superseded by round 1
+            _msg("FRANCE", "ENGLAND", ["A PAR - BUR"], rnd=1),
+            _msg("FRANCE", "GERMANY", ["A PAR H", "A MUN - BUR"]),  # lie to Germany; request to Germany
+            _msg("FRANCE", "ENGLAND", ["F LON - ENG", "A BER - KIE"]),  # request; third-party ignored
+        ],
+    )
+    claims = {(c.kind, c.proposed): c for c in analyse_promises(view)}
+    assert claims[("own", "A PAR - BUR")].kept and claims[("own", "A PAR - BUR")].told == ["ENGLAND"]
+    assert not claims[("own", "A PAR H")].kept
+    assert ("own", "A PAR - PIC") not in claims
+    assert not claims[("request", "F LON - ENG")].kept and claims[("request", "F LON - ENG")].actual == "F LON - NTH"
+    assert claims[("request", "A MUN - BUR")].actual == "A MUN H"   # no order = hold
+    assert ("request", "A BER - KIE") not in claims
+    [(speaker, unit, variants)] = contradictions(list(claims.values()))
+    assert speaker == "FRANCE" and unit == "A PAR" and set(variants) == {"A PAR - BUR", "A PAR H"}
+    t = promise_totals(list(claims.values()))
+    assert t["FRANCE"] == {"own": 2, "own_kept": 1, "requests": 0, "requests_honored": 0}
+    assert t["ENGLAND"]["requests"] == 1 and t["GERMANY"]["requests"] == 1
+
+
+def test_viewer_rebuilds_logged_game(tmp_path):
+    llm = AnthropicClient(client=FakeAnthropic(scripted_responder))
+    agents = {p: LLMAgent(p, llm) for p in new_game().powers}
+    agents["ITALY"] = RandomAgent("ITALY", random.Random(5))
+    s = GameRunner(agents, tmp_path, max_year=1902, press_rounds=1, llm=llm).run()
+    views, final_svg, centers = rebuild(load_events(tmp_path / "events.jsonl"))
+    assert centers == s["centers"] and len(views) == s["phases_played"]
+    out = build_viewer(tmp_path)
+    html_text = out.read_text()
+    assert "Promised vs did" in html_text and "data:image/svg+xml;base64," in html_text
+    assert len(list((tmp_path / "maps").glob("*.svg"))) == len(views) + 1

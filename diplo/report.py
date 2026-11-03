@@ -8,14 +8,21 @@ from pathlib import Path
 from .engine import POWERS
 
 
-def load_events(path: Path) -> list[dict]:
-    with open(path, encoding="utf-8") as f:
-        return [json.loads(line) for line in f if line.strip()]
+from .viewer import analyse_promises, load_events, promise_totals, promises_markdown, rebuild
+
+
+def _views(events):
+    try:
+        return {v.phase: v for v in rebuild(events, render=False)[0]}
+    except Exception as e:  # an old or partial log should still produce a transcript
+        print(f"[diplo] note: could not rebuild game for promise analysis ({e})")
+        return {}
 
 
 def transcript(events_path: Path) -> str:
     """Markdown transcript of one game: press, orders, rejections, center counts."""
     ev = load_events(events_path)
+    views = _views(ev)
     out = ["# Game transcript", ""]
     current = None
     for e in ev:
@@ -43,6 +50,10 @@ def transcript(events_path: Path) -> str:
             out.append(f"- **{e['power']}** agent error during {e['step']}: {e['error']}")
         elif k == "phase_result":
             counts = ", ".join(f"{p[:3]} {n}" for p, n in e["centers"].items())
+            if e["phase"] in views:
+                pm = promises_markdown(views[e["phase"]])
+                if pm:
+                    out.append(pm)
             out += ["", f"*After {e['phase']}: centers {counts}*"]
         elif k == "game_end":
             out += ["", "## Final", "", "```json", json.dumps({kk: e[kk] for kk in ("centers", "solo_winner", "leaders", "usage")}, indent=2), "```"]
@@ -96,11 +107,25 @@ def aggregate(run_dir: Path) -> str:
     else:
         md.append("- No LLM agents in these games (cost 0).")
     md.append(f"- Wall time per game: mean {sum(secs) / n:.0f}s, max {max(secs):.0f}s")
-    md += ["", "## Messages sent per power", "", "| Power | Messages | Proposals | Illegal proposals |", "|---|---|---|---|"]
+    claims = []
+    for ev_path in sorted(Path(run_dir).rglob("events.jsonl")):
+        claims += [c for v in _views(load_events(ev_path)).values() for c in analyse_promises(v)]
+    pt = promise_totals(claims)
+    md += ["", "## Messages and promises per power", "",
+           "Own proposals carried out: orders a power proposed in a message for its own unit that it then "
+           "actually gave (latest version sent to each recipient, exact match). Requests honored: orders "
+           "other powers proposed for this power's units that it then gave.", "",
+           "| Power | Messages | Proposals | Illegal proposals | Own proposals carried out | Requests honored |",
+           "|---|---|---|---|---|---|"]
     for p in POWERS:
+        t = pt[p]
         md.append(
             f"| {p} | {sum(s['stats'][p]['messages_sent'] for s in summaries)} | "
             f"{sum(s['stats'][p]['proposals'] for s in summaries)} | "
-            f"{sum(s['stats'][p]['illegal_proposals'] for s in summaries)} |"
+            f"{sum(s['stats'][p]['illegal_proposals'] for s in summaries)} | "
+            f"{t['own_kept']}/{t['own']} ({pct(t['own_kept'], t['own'])}) | "
+            f"{t['requests_honored']}/{t['requests']} ({pct(t['requests_honored'], t['requests'])}) |"
         )
+    ok = sum(t["own_kept"] for t in pt.values()); n = sum(t["own"] for t in pt.values())
+    md += ["", f"Overall, {ok}/{n} ({pct(ok, n)}) of own-unit proposals were carried out."]
     return "\n".join(md) + "\n"

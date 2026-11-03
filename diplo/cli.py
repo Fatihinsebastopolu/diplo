@@ -22,6 +22,7 @@ from .llm import (
 )
 from .report import aggregate, transcript
 from .runner import GameRunner
+from .viewer import build_viewer
 
 # Options that define a game; saved in each recording so --replay can restore them.
 GAME_OPTIONS = ["backend", "model", "effort", "max_year", "press_rounds", "random", "silent", "num_ctx", "think"]
@@ -100,6 +101,7 @@ def _play_one_game(args, gdir: Path, game_seed: int, human: str | None = None, r
         if recorder:
             recorder.close()
     (gdir / "transcript.md").write_text(transcript(gdir / "events.jsonl"))
+    print(f"[diplo]   viewer: {build_viewer(gdir)}")
     return s
 
 
@@ -167,6 +169,20 @@ def cmd_show(args):
     print(transcript(Path(args.events)))
 
 
+def cmd_view(args):
+    src = Path(args.path)
+    games = sorted({p.parent for p in src.rglob("events.jsonl")}) if src.is_dir() else [src.parent]
+    if not games:
+        sys.exit(f"no events.jsonl found under {src}")
+    for g in games:
+        (g / "transcript.md").write_text(transcript(g / "events.jsonl"))
+        print(f"[diplo] {build_viewer(g)}")
+    runs = {g.parent for g in games if g.name.startswith("game-")}
+    for r in runs:
+        (r / "report.md").write_text(aggregate(r))
+        print(f"[diplo] {r / 'report.md'}")
+
+
 def cmd_report(args):
     print(aggregate(Path(args.run_dir)))
 
@@ -211,6 +227,10 @@ def main(argv=None):
     p = sub.add_parser("show", help="print a markdown transcript of a game log")
     p.add_argument("events", help="path to a game's events.jsonl")
     p.set_defaults(fn=cmd_show)
+
+    p = sub.add_parser("view", help="(re)build game.html, maps, transcript and report for logged game(s)")
+    p.add_argument("path", help="a run directory, a game directory, or an events.jsonl")
+    p.set_defaults(fn=cmd_view)
 
     p = sub.add_parser("report", help="aggregate every game under a run directory")
     p.add_argument("run_dir")
