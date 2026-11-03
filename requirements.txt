@@ -1,0 +1,3 @@
+anthropic==2.4.0
+diplomacy==1.1.2
+pytest
