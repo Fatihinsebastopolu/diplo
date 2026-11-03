@@ -531,3 +531,29 @@ def test_orders_quoted_in_a_refusal_are_not_proposals():
     locs = {l.upper() for l in new_game().map.locs}
     text = "France here. A BUR - WAR isn't a legal move, so I'm not doing it. This spring A BUR - BEL."
     assert extract_orders(text, locs) == ["A BUR - BEL"]
+
+
+def test_timing_cost_and_reply_measures(tmp_path):
+    from diplo.report import timing_cost_replies
+    lines = iter(["GERMANY: hello", "", "", "", "", "", ""])
+    human = HumanAgent("FRANCE", input_fn=lambda prompt="": next(lines, ""), print_fn=lambda *a: None)
+
+    def responder(kw):
+        props = kw["output_config"]["format"]["schema"]["properties"]
+        content = kw["messages"][0]["content"]
+        if "orders" in props:
+            return {"orders": [], "private_notes": ""}
+        # Germany answers France; nobody else writes
+        if "You are GERMANY" in content and "FRANCE -> GERMANY" in content:
+            return {"messages": [{"to": "FRANCE", "text": "hi back", "proposed_orders": []}], "private_notes": ""}
+        return {"messages": [], "private_notes": ""}
+
+    llm = AnthropicClient(client=FakeAnthropic(responder))
+    agents = {p: LLMAgent(p, llm) for p in new_game().powers}
+    agents["FRANCE"] = human
+    GameRunner(agents, tmp_path, max_year=1901, press_rounds=2, llm=llm).run()
+    t = timing_cost_replies(load_events(tmp_path / "events.jsonl"))
+    assert t["human_messages"] == 1 and t["human_messages_replied"] == 1
+    assert len(t["negotiation_round_seconds"]) == 4 and len(t["order_step_seconds"]) == 2  # no builds: no W phase
+    assert set(t["cost_by_year"]) == {"1901"} and t["cost_by_year"]["1901"] > 0
+    assert "## Cost and time by game year" in aggregate(tmp_path) and "human player that an agent replied" in aggregate(tmp_path)

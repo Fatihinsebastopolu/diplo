@@ -202,9 +202,13 @@ class GameRunner:
             if g.phase_type == "M" and self.press_rounds > 0:
                 legal_any = all_legal_orders(g, all_orders)
                 for r in range(self.press_rounds):
+                    t0 = time.time()
                     self._press_round(r, snaps, legal_any)
+                    self.log("timing", phase=phase, step="negotiation", round=r, seconds=round(time.time() - t0, 2))
             needs_orders = {p: s for p, s in snaps.items() if s.legal_by_loc}
+            t0 = time.time()
             outcomes = self._order_round(needs_orders)
+            self.log("timing", phase=phase, step="orders", seconds=round(time.time() - t0, 2))
             self._notify("orders_set", g, phase)
             g.process()
             self.ledger.update(PhaseView(

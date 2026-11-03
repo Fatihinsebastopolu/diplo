@@ -60,6 +60,53 @@ def transcript(events_path: Path) -> str:
     return "\n".join(out) + "\n"
 
 
+def timing_cost_replies(events: list[dict]) -> dict:
+    """Per-game time and cost by phase and year, and how often messages got a reply.
+
+    A message counts as answered if the recipient wrote back to the sender later in
+    the same phase or in the first negotiation round of the next movement phase.
+    """
+    phase_cost, prev = {}, 0.0
+    for e in events:
+        if e["event"] == "usage":
+            phase_cost[e["phase"]] = e["cost_usd"] - prev
+            prev = e["cost_usd"]
+    year_cost = {}
+    for ph, c in phase_cost.items():
+        year_cost[ph[1:5]] = year_cost.get(ph[1:5], 0.0) + c
+    rounds = [e["seconds"] for e in events if e["event"] == "timing" and e["step"] == "negotiation"]
+    orders = [e["seconds"] for e in events if e["event"] == "timing" and e["step"] == "orders"]
+    # wall time per phase from event timestamps (works for logs made before timing events existed)
+    phase_secs, last_t = {}, next((e["t"] for e in events if e["event"] == "game_start"), None)
+    for e in events:
+        if e["event"] == "phase_result" and last_t is not None:
+            phase_secs[e["phase"]] = e["t"] - last_t
+            last_t = e["t"]
+    year_secs = {}
+    for ph, sec in phase_secs.items():
+        year_secs[ph[1:5]] = year_secs.get(ph[1:5], 0.0) + sec
+    humans = {p for e in events if e["event"] == "game_start" for p, k in e["agents"].items() if k == "human"}
+    press = [e for e in events if e["event"] == "press"]
+    mphases = list(dict.fromkeys(e["phase"] for e in press))
+    def answered(m):
+        nxt = mphases[mphases.index(m["phase"]) + 1] if mphases.index(m["phase"]) + 1 < len(mphases) else None
+        return any(r["sender"] == m["recipient"] and r["recipient"] == m["sender"] and
+                   ((r["phase"] == m["phase"] and r["round"] > m["round"]) or (r["phase"] == nxt and r["round"] == 0))
+                   for r in press)
+    # the last round of the final phase has no chance of a reply; leave it out
+    last = (mphases[-1], max((m["round"] for m in press if m["phase"] == mphases[-1]), default=0)) if press else None
+    eligible = [m for m in press if (m["phase"], m["round"]) != last]
+    to_humans = [m for m in eligible if m["sender"] in humans]
+    return {
+        "cost_by_year": {y: round(c, 4) for y, c in year_cost.items()},
+        "seconds_by_year": {y: round(s, 1) for y, s in year_secs.items()},
+        "negotiation_round_seconds": rounds,
+        "order_step_seconds": orders,
+        "replied": sum(answered(m) for m in eligible), "messages": len(eligible),
+        "human_messages_replied": sum(answered(m) for m in to_humans), "human_messages": len(to_humans),
+    }
+
+
 def aggregate(run_dir: Path) -> str:
     """Markdown table over every summary.json under run_dir."""
     summaries = [json.loads(p.read_text()) for p in sorted(Path(run_dir).rglob("summary.json"))]
@@ -136,6 +183,34 @@ def aggregate(run_dir: Path) -> str:
            f"units dislodged: {sum(a['dislodged'] for a in act.values())}; "
            f"final center spread (max - min) per game: {spreads}."]
     pt = promise_totals(claims)
+    tcr = [timing_cost_replies(load_events(p)) for p in sorted(Path(run_dir).rglob("events.jsonl"))]
+    years = sorted({y for t in tcr for y in t["cost_by_year"]})
+    if years:
+        md += ["", "## Cost and time by game year", "",
+               "Mean over games that reached that year. Time is spent waiting for agents (negotiation rounds plus "
+               "order submission).", "", "| Year | Est. cost | Time |", "|---|---|---|"]
+        for y in years:
+            cs = [t["cost_by_year"][y] for t in tcr if y in t["cost_by_year"]]
+            ss = [t["seconds_by_year"].get(y, 0) for t in tcr if y in t["cost_by_year"]]
+            md.append(f"| {y} | ${sum(cs) / len(cs):.3f} | {sum(ss) / len(ss):.0f} s |")
+    rs = [x for t in tcr for x in t["negotiation_round_seconds"]]
+    os_ = [x for t in tcr for x in t["order_step_seconds"]]
+    if rs or os_:
+        md += ["", "## Waiting time per step", ""]
+        if rs:
+            md.append(f"- Negotiation round (all agents writing in parallel): mean {sum(rs) / len(rs):.1f} s, "
+                      f"max {max(rs):.1f} s over {len(rs)} rounds")
+        if os_:
+            md.append(f"- Order submission: mean {sum(os_) / len(os_):.1f} s, max {max(os_):.1f} s over {len(os_)} phases")
+        md.append("- In `play` mode these are roughly how long the human waits after finishing their own input.")
+    rep_n = sum(t["messages"] for t in tcr); rep_y = sum(t["replied"] for t in tcr)
+    hn = sum(t["human_messages"] for t in tcr); hy = sum(t["human_messages_replied"] for t in tcr)
+    if rep_n:
+        md += ["", "## Replies", "",
+               f"- Messages that got a reply from their recipient (later in the same phase or at the start of "
+               f"the next): {rep_y}/{rep_n} ({pct(rep_y, rep_n)})"]
+        if hn:
+            md.append(f"- Messages from the human player that an agent replied to: {hy}/{hn} ({pct(hy, hn)})")
     md += ["", "## Messages and promises per power", "",
            "Own proposals carried out: orders a power proposed in a message for its own unit that it then "
            "actually gave (latest version sent to each recipient, exact match). Requests honored: orders "

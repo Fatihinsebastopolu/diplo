@@ -141,9 +141,15 @@ Each game writes these files to `runs/<run>/game-NNN/`:
 - `saved_game.json`: the game in the `diplomacy` package's standard format, which
   that package's tools can replay and render.
 
-`sim` also writes a `report.md` for the whole run. It covers per-power mean centers,
-wins and survival; legality rates; cost and time per game; messages per power; and
-promise keeping.
+`sim` also writes a `report.md` for the whole run. It covers:
+- per-power mean centers, wins and survival;
+- legality rates, including proposals repaired or dropped;
+- cost and time per game, and **per game year**;
+- waiting time per negotiation round and per order step (in `play` mode, roughly how
+  long the human waits);
+- how often messages got a reply, and separately how often the human player's did;
+- activity (moves, supports, supports for another power, holds, units dislodged);
+- messages and promise keeping per power.
 
 The viewer and promise analysis are built from `events.jsonl` alone. The logged orders
 are re-applied to a fresh rules engine, and the rebuilt final centers must match the
