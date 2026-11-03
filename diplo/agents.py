@@ -9,7 +9,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 
-from .engine import PHASE_NAMES, PhaseSnapshot, normalize_order, validate_orders
+from .engine import PHASE_NAMES, PhaseSnapshot, explain_proposal, illegal_message_orders, normalize_order, validate_orders
 from .llm import LLMClient, LLMError
 
 MAX_MESSAGES_PER_ROUND = 3
@@ -211,9 +211,49 @@ class LLMAgent(Agent):
             "(for you or the recipient) in proposed_orders using exact order syntax. "
             "Update your private notes."
         )
-        data = self.llm.json_call(SYSTEM_PROMPT, user, _negotiate_schema(others))
+        schema = _negotiate_schema(others)
+        data = self.llm.json_call(SYSTEM_PROMPT, user, schema)
         self.notes = data.get("private_notes", self.notes)[:2000]
-        return [m for m in data.get("messages", []) if m.get("to") in others][:MAX_MESSAGES_PER_ROUND]
+        msgs = [m for m in data.get("messages", []) if m.get("to") in others][:MAX_MESSAGES_PER_ROUND]
+        bad = self._illegal_in(msgs, snap)
+        self.last_negotiation = {"first_pass_illegal": sum(len(b) for b in bad.values()),
+                                 "repaired": False, "dropped": 0}
+        if not bad:
+            return msgs
+
+        # One repair round: show each message's illegal orders and the units' real options.
+        lines = []
+        for i, orders in bad.items():
+            lines.append(f"- Message {i + 1} (to {msgs[i]['to']}):")
+            lines += [f"    {o}: {explain_proposal(o, snap.all_legal_by_loc)}" for o in orders]
+        drafted = "\n".join(f"{i + 1}. to {m['to']}: {m['text']} | proposed: {m.get('proposed_orders', [])}"
+                             for i, m in enumerate(msgs))
+        repair = (
+            user
+            + f"\n\n## Problem with your drafted messages\n{drafted}\n\n"
+            f"These proposed orders are not legal, so the messages were not sent:\n" + "\n".join(lines)
+            + "\nRewrite the complete set of messages. Every order you propose or mention, in "
+            "proposed_orders or in the text, must be legal this phase."
+        )
+        try:
+            data2 = self.llm.json_call(SYSTEM_PROMPT, repair, schema)
+        except LLMError:
+            data2 = {"messages": [m for i, m in enumerate(msgs) if i not in bad]}
+        self.notes = data2.get("private_notes", self.notes)[:2000]
+        msgs2 = [m for m in data2.get("messages", []) if m.get("to") in others][:MAX_MESSAGES_PER_ROUND]
+        still = self._illegal_in(msgs2, snap)
+        self.last_negotiation.update(repaired=not still, dropped=len(still))
+        return [m for i, m in enumerate(msgs2) if i not in still]
+
+    @staticmethod
+    def _illegal_in(msgs: list[dict], snap: PhaseSnapshot) -> dict[int, list[str]]:
+        legal = {o for os_ in snap.all_legal_by_loc.values() for o in os_}
+        bad = {}
+        for i, m in enumerate(msgs):
+            wrong = illegal_message_orders(m.get("text", ""), m.get("proposed_orders", []) or [], legal, snap.valid_locs)
+            if wrong:
+                bad[i] = wrong
+        return bad
 
     def orders(self, snap, press):
         user = (

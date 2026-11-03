@@ -13,9 +13,16 @@ The project has three design goals:
   before it reaches the adjudicator. If any order is illegal, the agent gets one
   repair attempt with the reasons. Orders that are still illegal are dropped, so that
   unit holds. As a result, an illegal order never reaches the adjudicator.
-- **Proposals are checked too.** Orders an agent proposes in a message, for itself or
-  for the recipient, are checked against the full legal-order set and logged as legal
-  or illegal.
+- **Proposals are checked too.** Before an agent's messages are sent, every order it
+  proposes is checked against the full legal-order set. That covers its structured
+  proposal list and any order written in the message text. If any is illegal, the
+  agent gets one repair attempt, shown the real legal options for each unit involved. A
+  message that is still illegal is dropped, so players never receive impossible
+  proposals from an agent.
+  - Order text in a message is judged leniently on coasts, so "F RUM - BUL" counts as
+    "F RUM - BUL/EC".
+  - Human messages are scanned for order text too. Illegal ones are delivered with an
+    `[engine note]` that the recipient sees.
 - **Everything is measured.** Each game records:
   - token usage and estimated cost;
   - illegal-order rates, both first-attempt and after repair;

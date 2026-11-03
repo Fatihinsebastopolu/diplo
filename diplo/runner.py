@@ -13,8 +13,8 @@ from diplomacy.utils.export import to_saved_game_format
 from .agents import Agent, HumanAgent, OrderOutcome, Press
 from .engine import (
     all_legal_orders,
-    check_proposals,
-    extract_orders,
+    illegal_message_orders,
+    message_orders,
     new_game,
     phase_year,
     sc_counts,
@@ -59,6 +59,9 @@ class GameRunner:
                 "messages_sent": 0,
                 "proposals": 0,
                 "illegal_proposals": 0,
+                "illegal_proposals_first_pass": 0,
+                "proposal_repairs_succeeded": 0,
+                "messages_dropped": 0,
                 "orders_submitted": 0,
                 "orders_accepted": 0,
                 "illegal_first_pass": 0,
@@ -104,7 +107,18 @@ class GameRunner:
 
         def call(p):
             try:
-                return self.agents[p].negotiate(snaps[p], visible, r, self.press_rounds)
+                agent = self.agents[p]
+                agent.last_negotiation = None
+                out = agent.negotiate(snaps[p], visible, r, self.press_rounds)
+                rep = getattr(agent, "last_negotiation", None)
+                if rep:
+                    st = self.stats[p]
+                    st["illegal_proposals_first_pass"] += rep["first_pass_illegal"]
+                    st["proposal_repairs_succeeded"] += int(rep["repaired"] and rep["first_pass_illegal"] > 0)
+                    st["messages_dropped"] += rep["dropped"]
+                    if rep["first_pass_illegal"]:
+                        self.log("proposal_repair", phase=phase, power=p, round=r, **rep)
+                return out
             except LLMError as e:
                 self.stats[p]["agent_failures"] += 1
                 self.log("agent_error", phase=phase, power=p, step="negotiate", error=str(e))
@@ -114,10 +128,11 @@ class GameRunner:
         valid_locs = {l.upper() for l in self.game.map.locs}
         for sender in sorted(out):
             for m in out[sender]:
-                proposed = m.get("proposed_orders", []) or []
-                if isinstance(self.agents[sender], HumanAgent):
-                    proposed = extract_orders(m["text"], valid_locs)
-                good, bad = check_proposals(proposed, legal_any)
+                # structured proposals plus any order-like text in the message (humans have only text)
+                structured = m.get("proposed_orders", []) or []
+                proposed = message_orders(m["text"], structured, valid_locs)
+                bad = illegal_message_orders(m["text"], structured, legal_any, valid_locs)
+                good = [o for o in proposed if o not in bad]
                 msg = Press(phase, r, sender, m["to"], m["text"].strip(), good + bad, bad)
                 self.press.append(msg)
                 st = self.stats[sender]

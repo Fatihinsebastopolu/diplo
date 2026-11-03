@@ -78,7 +78,8 @@ def aggregate(run_dir: Path) -> str:
                 sum(1 for s in summaries if p not in s["eliminated"]),
             )
         )
-    tot = {k: sum(s["stats"][p][k] for s in summaries for p in s["stats"]) for k in summaries[0]["stats"]["FRANCE"]}
+    keys = {k for s in summaries for st in s["stats"].values() for k in st}
+    tot = {k: sum(s["stats"][p].get(k, 0) for s in summaries for p in s["stats"]) for k in keys}
     costs = [s["usage"]["cost_usd"] for s in summaries if s.get("usage")]
     calls = [s["usage"]["calls"] for s in summaries if s.get("usage")]
     refusals = sum(s["usage"]["refusals"] for s in summaries if s.get("usage"))
@@ -95,7 +96,9 @@ def aggregate(run_dir: Path) -> str:
         f"- Orders submitted: {tot['orders_submitted']}; illegal on first attempt: {tot['illegal_first_pass']} ({pct(tot['illegal_first_pass'], tot['orders_submitted'])})",
         f"- Order sets repaired after feedback: {tot['repairs_succeeded']}; illegal orders still dropped after repair: {tot['illegal_final']}",
         "- Illegal orders reaching the adjudicator: 0 (all orders are validated first)",
-        f"- Orders proposed in negotiation: {tot['proposals']}; illegal: {tot['illegal_proposals']} ({pct(tot['illegal_proposals'], tot['proposals'])})",
+        f"- Orders proposed in negotiation (delivered): {tot['proposals']}; illegal: {tot['illegal_proposals']} ({pct(tot['illegal_proposals'], tot['proposals'])})",
+        f"- Illegal proposals caught in agents' drafts before sending: {tot.get('illegal_proposals_first_pass', 0)}; "
+        f"rounds fixed by repair: {tot.get('proposal_repairs_succeeded', 0)}; messages dropped after a failed repair: {tot.get('messages_dropped', 0)}",
         f"- Messages sent: {tot['messages_sent']}; agent failures (fell back to holds/no press): {tot['agent_failures']}",
     ]
     md += ["", "## Cost and time", ""]

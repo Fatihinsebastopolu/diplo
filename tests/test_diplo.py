@@ -121,6 +121,11 @@ def scripted_responder(kw):
                  if ": " in line and " | " in line]
         return {"orders": holds + ["A XXX - YYY"], "private_notes": "holding"}
     to = kw["output_config"]["format"]["schema"]["properties"]["messages"]["items"]["properties"]["to"]["enum"][0]
+    if "Problem with your drafted messages" in content:  # repair round: propose one of our own legal orders
+        legal = content.split("## Your legal orders this phase\n")[1].splitlines()[0]
+        order = legal.split(": ", 1)[1].split(" | ")[0] if ": " in legal and " | " in legal else ""
+        return {"messages": [{"to": to, "text": "Peace?", "proposed_orders": [order] if order else []}],
+                "private_notes": ""}
     return {"messages": [{"to": to, "text": "Peace?", "proposed_orders": ["A PAR - MUN"]}], "private_notes": ""}
 
 
@@ -131,11 +136,12 @@ def test_full_game_with_llm_agents_and_silent_power(tmp_path):
     assert s["final_phase"] == "S1903M"
     st = s["stats"]
     assert st["ENGLAND"]["messages_sent"] == 0 and st["FRANCE"]["messages_sent"] > 0
-    assert st["FRANCE"]["illegal_proposals"] == st["FRANCE"]["proposals"] > 0
+    assert st["FRANCE"]["illegal_proposals_first_pass"] > 0 and st["FRANCE"]["proposal_repairs_succeeded"] > 0
+    assert sum(x["illegal_proposals"] for x in st.values()) == 0  # repaired before delivery
     assert st["FRANCE"]["illegal_first_pass"] > 0 and st["FRANCE"]["illegal_final"] > 0
     assert s["usage"]["calls"] > 0 and s["usage"]["cost_usd"] > 0
     md = transcript(tmp_path / "events.jsonl")
-    assert "illegal proposals" in md and "first attempt rejected" in md
+    assert "first attempt rejected" in md
     assert "Mean centers" in aggregate(tmp_path)
 
 
@@ -332,3 +338,34 @@ def test_activity_counts_unordered_units_as_holds():
     a = activity([view])
     assert a["FRANCE"] == {"moves": 1, "supports": 1, "convoys": 0, "holds": 1, "dislodged": 0}
     assert a["RUSSIA"]["holds"] == 4
+
+
+
+def test_message_still_illegal_after_repair_is_dropped():
+    calls = []
+
+    def responder(kw):
+        calls.append(kw)
+        # text mentions an illegal support; the structured list is empty, so only text extraction catches it
+        return {"messages": [{"to": "ENGLAND", "text": "I'll do A SER S A BUL - CON for you", "proposed_orders": []},
+                             {"to": "GERMANY", "text": "Hello", "proposed_orders": ["A PAR - BUR"]}],
+                "private_notes": ""}
+
+    agent = LLMAgent("FRANCE", AnthropicClient(client=FakeAnthropic(responder)))
+    out = agent.negotiate(snapshot(new_game(), "FRANCE"), [], 0, 1)
+    assert len(calls) == 2  # draft + one repair
+    assert "That unit's legal orders are" in calls[1]["messages"][0]["content"] or "there is no army" in calls[1]["messages"][0]["content"]
+    assert [m["to"] for m in out] == ["GERMANY"]
+    assert agent.last_negotiation == {"first_pass_illegal": 1, "repaired": False, "dropped": 1}
+
+
+
+def test_text_mentions_tolerate_missing_coast_but_structured_proposals_do_not():
+    from diplo.engine import illegal_message_orders
+    g = new_game()
+    legal = {o for os_ in g.get_all_possible_orders().values() for o in os_}
+    locs = {l.upper() for l in g.map.locs}
+    # F STP/SC - BOT is legal; written without the coast in text it is accepted, but not as a structured proposal
+    assert illegal_message_orders("your F STP - BOT would bounce", [], legal, locs) == []
+    assert illegal_message_orders("hi", ["F STP - BOT"], legal, locs) == ["F STP - BOT"]
+    assert illegal_message_orders("I'll do A SER S A BUL - CON", [], legal, locs) == ["A SER S A BUL - CON"]

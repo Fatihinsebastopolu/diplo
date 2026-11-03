@@ -51,6 +51,9 @@ class PhaseSnapshot:
     disbands_required: int = 0
     centers: list[str] = field(default_factory=list)
     units: list[str] = field(default_factory=list)
+    # Every unit's legal orders this phase (all powers), for checking proposals.
+    all_legal_by_loc: dict[str, list[str]] = field(default_factory=dict, repr=False)
+    valid_locs: frozenset = field(default_factory=frozenset, repr=False)
 
 
 def alive_powers(game: Game) -> list[str]:
@@ -132,6 +135,8 @@ def snapshot(game: Game, power: str, all_orders: dict | None = None) -> PhaseSna
         disbands_required=max(0, -delta) if game.phase_type == "A" else 0,
         centers=centers,
         units=units,
+        all_legal_by_loc=all_orders,
+        valid_locs=frozenset(l.upper() for l in game.map.locs),
     )
 
 
@@ -239,3 +244,45 @@ def extract_orders(text: str, valid_locs: set[str]) -> list[str]:
         if all(t in valid_locs for t in locs) and order not in found:
             found.append(order)
     return found
+
+
+def message_orders(text: str, proposed: list[str], valid_locs) -> list[str]:
+    """All orders a message proposes: its structured list plus order-like text in it."""
+    found = [normalize_order(o) for o in proposed if normalize_order(o)]
+    for o in extract_orders(text, set(valid_locs)):
+        if o not in found:
+            found.append(o)
+    return found
+
+
+def explain_proposal(order: str, all_legal_by_loc: dict[str, list[str]]) -> str:
+    """Why a proposed order is illegal, with the unit's real options when it exists."""
+    parts = order.split()
+    if len(parts) >= 2 and parts[0] in ("A", "F"):
+        base = parts[1].split("/")[0]
+        options = [o for loc, os_ in all_legal_by_loc.items() if loc.split("/")[0] == base
+                   for o in os_ if o.startswith(parts[0] + " ")]
+        if options:
+            return "not legal this phase. That unit's legal orders are: " + " | ".join(sorted(options))
+        return f"there is no {'army' if parts[0] == 'A' else 'fleet'} at {parts[1]} this phase"
+    return "not a recognised order"
+
+
+def _strip_coasts(order: str) -> str:
+    return re.sub(r"/[NSE]C\b", "", order)
+
+
+def illegal_message_orders(text: str, proposed: list[str], legal: set[str], valid_locs) -> list[str]:
+    """Illegal orders in a message.
+
+    Structured proposals must match a legal order exactly. Orders mentioned in the
+    text are judged leniently: a missing coast (e.g. "F RUM - BUL" for
+    "F RUM - BUL/EC") is accepted, as a human reader would.
+    """
+    structured = [normalize_order(o) for o in proposed if normalize_order(o)]
+    lenient = {_strip_coasts(o) for o in legal}
+    bad = [o for o in structured if o not in legal]
+    for o in extract_orders(text, set(valid_locs)):
+        if o not in structured and o not in legal and _strip_coasts(o) not in lenient and o not in bad:
+            bad.append(o)
+    return bad
