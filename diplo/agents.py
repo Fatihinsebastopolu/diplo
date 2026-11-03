@@ -86,11 +86,20 @@ against other players, who may be humans or other agents. Each movement phase ha
 period followed by simultaneous secret orders; the rules engine adjudicates them.
 
 How to play well:
-- Pursue supply centers; 18 centers wins outright. Survival and a strong position also matter.
-- Negotiate actively: propose concrete cooperation (supports, demilitarized zones, \
-non-aggression, coordinated attacks), respond to what others actually said, and remember \
-what was promised. You may bluff or break agreements when it serves you, as human players do, \
-but never misstate the rules or propose an order that the rules do not allow.
+- You win by growing: 18 centers wins outright. Once the neutral centers are taken (usually by \
+the end of 1902), the only way to grow is to take centers from other powers. Every year, know \
+where your next center will come from.
+- Use negotiation to make that happen. Find a partner with a common enemy and agree concrete \
+joint attacks: who moves where, who supports whom, and in which season. Non-aggression pacts \
+and demilitarized zones are worth making when they free your units to attack elsewhere, but \
+they are a means, not the goal: a power whose units only hold stagnates and gets picked apart.
+- Respond to what others actually said, remember what was promised, and judge other powers \
+by what they did, not only by what they said. You may bluff or break agreements when it \
+serves you, as human players do, but never misstate the rules or propose an order that the \
+rules do not allow.
+- Give every unit a job: attacking or supporting an attack toward a center, defending a \
+center that is actually threatened, or moving into position for next season. Hold only when \
+that is genuinely the best use of the unit.
 - Keep messages short and in plain English, like a human player's in-game messages. Stay on \
 the topic of the game; do not insult or harass other players.
 - When you list proposed orders in a message, use exact order syntax, e.g. "A PAR - BUR", \
@@ -98,6 +107,8 @@ the topic of the game; do not insult or harass other players.
 "A PAR B", "F STP/SC B", "A WAR D", "WAIVE".
 - When submitting orders you must choose only from the legal orders you are given. \
 Units without an order hold.
+- A message may carry an [engine note] saying that an order proposed in it is not legal this \
+phase. Such an order cannot happen as written: never agree to it or plan around it.
 
 Your private_notes are a short memory that only you will see next phase: record \
 agreements, suspicions and plans."""
@@ -150,7 +161,9 @@ def format_press(press: list[Press], power: str) -> str:
     lines = []
     for m in visible:
         prop = f" | proposed: {'; '.join(m.proposed_orders)}" if m.proposed_orders else ""
-        lines.append(f"[{m.phase} r{m.round}] {m.sender} -> {m.recipient}: {m.text}{prop}")
+        note = (f" [engine note: not a legal order this phase: {'; '.join(m.illegal_proposals)}]"
+                if m.illegal_proposals else "")
+        lines.append(f"[{m.phase} r{m.round}] {m.sender} -> {m.recipient}: {m.text}{prop}{note}")
     return "\n".join(lines)
 
 
@@ -207,7 +220,8 @@ class LLMAgent(Agent):
             self._context(snap, press)
             + f"\n## Your legal orders (choose at most one per unit location)\n{format_legal(snap)}\n\n"
             "## Task\nNegotiation is over. Submit your orders for this phase, copying each "
-            "order exactly from the legal list. Then update your private notes."
+            "order exactly from the legal list, and check that every unit has a job. "
+            "Then update your private notes."
         )
         data = self.llm.json_call(SYSTEM_PROMPT, user, ORDERS_SCHEMA)
         submitted = [normalize_order(o) for o in data.get("orders", [])]
@@ -256,6 +270,8 @@ class HumanAgent(Agent):
             if m.sender == self.power:
                 continue
             prop = f"\n      proposed: {'; '.join(m.proposed_orders)}" if m.proposed_orders else ""
+            if m.illegal_proposals:
+                prop += f"\n      [engine note: not a legal order this phase: {'; '.join(m.illegal_proposals)}]"
             self.print(f"  << {m.sender}: {m.text}{prop}")
 
     def negotiate(self, snap, press, round_idx, rounds):

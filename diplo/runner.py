@@ -14,6 +14,7 @@ from .agents import Agent, HumanAgent, OrderOutcome, Press
 from .engine import (
     all_legal_orders,
     check_proposals,
+    extract_orders,
     new_game,
     phase_year,
     sc_counts,
@@ -110,9 +111,12 @@ class GameRunner:
                 return []
 
         out = self._parallel(call, list(snaps))
+        valid_locs = {l.upper() for l in self.game.map.locs}
         for sender in sorted(out):
             for m in out[sender]:
                 proposed = m.get("proposed_orders", []) or []
+                if isinstance(self.agents[sender], HumanAgent):
+                    proposed = extract_orders(m["text"], valid_locs)
                 good, bad = check_proposals(proposed, legal_any)
                 msg = Press(phase, r, sender, m["to"], m["text"].strip(), good + bad, bad)
                 self.press.append(msg)

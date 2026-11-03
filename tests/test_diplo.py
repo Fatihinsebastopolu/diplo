@@ -293,3 +293,42 @@ def test_max_cost_stops_game_and_replay_matches(tmp_path, monkeypatch):
     cli.main(["sim", "--replay", str(run), "--out", str(tmp_path / "b")])
     r = json.loads(next((tmp_path / "b").rglob("summary.json")).read_text())
     assert r["final_phase"] == s["final_phase"] and r["stopped_reason"] == s["stopped_reason"]
+
+
+# ----------------------------------------------------------------- proposal checks / activity
+
+from diplo.agents import Press, format_press, HumanAgent
+from diplo.engine import extract_orders
+from diplo.viewer import activity
+
+
+def test_extract_orders_from_human_text():
+    locs = {l.upper() for l in new_game().map.locs}
+    text = "ok: a par - bur, and you A Mun S a PAR - BUR. A few ideas; F STP/SC - BOT. Burgundy? A XYZ - PAR"
+    assert extract_orders(text, locs) == ["A PAR - BUR", "A MUN S A PAR - BUR", "F STP/SC - BOT"]
+
+
+def test_illegal_proposals_are_annotated_for_both_sides():
+    m = Press("S1901M", 0, "GERMANY", "FRANCE", "Let's do this", ["A MUN - PAR"], ["A MUN - PAR"])
+    for viewer in ("FRANCE", "GERMANY"):
+        assert "[engine note: not a legal order this phase: A MUN - PAR]" in format_press([m], viewer)
+
+
+def test_human_proposals_are_checked(tmp_path):
+    lines = iter(["GERMANY: please do A MUN - PAR and I'll take Burgundy with a par - bur", "", ""])
+    human = HumanAgent("FRANCE", input_fn=lambda prompt="": next(lines, ""), print_fn=lambda *a: None)
+    agents = {p: RandomAgent(p, random.Random(2)) for p in new_game().powers}
+    agents["FRANCE"] = human
+    GameRunner(agents, tmp_path, max_year=1901, press_rounds=1).run()
+    press = [e for e in load_events(tmp_path / "events.jsonl") if e["event"] == "press"]
+    assert sorted(press[0]["proposed_orders"]) == ["A MUN - PAR", "A PAR - BUR"]
+    assert press[0]["illegal_proposals"] == ["A MUN - PAR"]
+
+
+def test_activity_counts_unordered_units_as_holds():
+    g = new_game()
+    view = PhaseView("S1901M", {p: list(g.get_units(p)) for p in g.powers}, {},
+                     {"FRANCE": ["A PAR - BUR", "A MAR S A PAR - BUR"]})
+    a = activity([view])
+    assert a["FRANCE"] == {"moves": 1, "supports": 1, "convoys": 0, "holds": 1, "dislodged": 0}
+    assert a["RUSSIA"]["holds"] == 4

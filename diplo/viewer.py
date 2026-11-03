@@ -77,6 +77,47 @@ def rebuild(events: list[dict], render: bool = True) -> tuple[list[PhaseView], s
     return views, final_svg, final_centers
 
 
+# --------------------------------------------------------------------------- activity
+
+
+def activity(views: list[PhaseView]) -> dict[str, dict[str, int]]:
+    """Per power, over movement phases: what each unit did, and units it lost.
+
+    A unit with no order counts as holding. 'dislodged' counts the power's own
+    units that were dislodged.
+    """
+    t = {p: {"moves": 0, "supports": 0, "convoys": 0, "holds": 0, "dislodged": 0} for p in POWERS}
+    for v in views:
+        if not v.phase.endswith("M"):
+            continue
+        for p, units in v.units.items():
+            by_unit = {_unit_of(o): o for o in v.orders.get(p, [])}
+            for u in units:
+                o = by_unit.get(u) or by_unit.get(_unit_base_match(u, by_unit))
+                if o is None or o.endswith(" H"):
+                    t[p]["holds"] += 1
+                elif " S " in o:
+                    t[p]["supports"] += 1
+                elif " C " in o:
+                    t[p]["convoys"] += 1
+                else:
+                    t[p]["moves"] += 1
+        for unit, res in v.results.items():
+            if any("dislodged" in r for r in res):
+                owner = _owner(unit, v.units)
+                if owner:
+                    t[owner]["dislodged"] += 1
+    return t
+
+
+def _unit_base_match(unit: str, by_unit: dict) -> str | None:
+    base = unit.split()[1].split("/")[0]
+    for u in by_unit:
+        if u and u.split()[1].split("/")[0] == base:
+            return u
+    return None
+
+
 # --------------------------------------------------------------------------- PNG export
 
 

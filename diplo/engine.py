@@ -8,6 +8,7 @@ IGNORE_ERRORS and would otherwise drop illegal orders silently.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from diplomacy import Game
@@ -216,3 +217,25 @@ def check_proposals(proposed: list[str], legal_any: set[str]) -> tuple[list[str]
             continue
         (good if o in legal_any else bad).append(o)
     return good, bad
+
+
+_LOC = r"[A-Z]{3}(?:/[NSE]C)?\b"
+_UNIT = rf"[AF] {_LOC}"
+_ORDER_RE = re.compile(
+    rf"\b{_UNIT} (?:H\b|- {_LOC}(?: VIA\b)?|S {_UNIT}(?: - {_LOC})?|C A {_LOC} - {_LOC}|R {_LOC}|B\b|D\b)"
+)
+
+
+def extract_orders(text: str, valid_locs: set[str]) -> list[str]:
+    """Find order-like phrases (e.g. "a par - bur") in a human's free-text message.
+
+    Only phrases whose province codes are real map locations count, so ordinary
+    words are not mistaken for orders.
+    """
+    found = []
+    for m in _ORDER_RE.finditer(normalize_order(text)):
+        order = m.group(0)
+        locs = [t for t in order.split() if len(t) >= 3 and t != "VIA"]
+        if all(t in valid_locs for t in locs) and order not in found:
+            found.append(order)
+    return found
