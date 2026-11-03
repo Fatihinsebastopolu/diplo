@@ -251,3 +251,11 @@ def test_viewer_rebuilds_logged_game(tmp_path):
     html_text = out.read_text()
     assert "Promised vs did" in html_text and "data:image/svg+xml;base64," in html_text
     assert len(list((tmp_path / "maps").glob("*.svg"))) == len(views) + 1
+
+
+def test_png_export_is_optional(tmp_path, monkeypatch):
+    import sys
+    from diplo.viewer import svg_to_png
+    monkeypatch.setitem(sys.modules, "cairosvg", None)  # import now raises ImportError
+    assert svg_to_png("<svg/>", tmp_path / "x.png") is False
+    assert not (tmp_path / "x.png").exists()

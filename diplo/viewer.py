@@ -77,6 +77,30 @@ def rebuild(events: list[dict], render: bool = True) -> tuple[list[PhaseView], s
     return views, final_svg, final_centers
 
 
+# --------------------------------------------------------------------------- PNG export
+
+
+def _raster_safe(svg: str) -> str:
+    """Inline the few CSS rules cairosvg mis-renders (the score box and the labels).
+
+    The renderer styles these with CSS classes and em font sizes; cairosvg draws
+    the box black and drops the text, so they are given explicit attributes.
+    """
+    return (svg.replace('class="currentnoterect"', 'fill="#c5dfea"')
+               .replace('class="currentnotetext"', 'font-family="serif" font-size="24" fill="black"')
+               .replace('class="currentphasetext"', 'font-family="serif" font-size="40" fill="black"'))
+
+
+def svg_to_png(svg: str, path: Path, width: int = 1200) -> bool:
+    """Write a PNG of a board SVG. Returns False if cairo is not available."""
+    try:
+        import cairosvg
+    except (ImportError, OSError):  # OSError: cairosvg installed but the system cairo library is missing
+        return False
+    cairosvg.svg2png(bytestring=_raster_safe(svg).encode(), write_to=str(path), output_width=width)
+    return True
+
+
 # --------------------------------------------------------------------------- promises vs actions
 
 
@@ -320,9 +344,15 @@ def build_viewer(game_dir: Path) -> Path:
     views, final_svg, final_centers = rebuild(events, render=True)
     maps = game_dir / "maps"
     maps.mkdir(exist_ok=True)
-    for i, v in enumerate(views):
-        (maps / f"{i:02d}-{v.phase}.svg").write_text(v.svg)
-    (maps / f"{len(views):02d}-final.svg").write_text(final_svg)
+    boards = [(f"{i:02d}-{v.phase}", v.svg) for i, v in enumerate(views)]
+    boards.append((f"{len(views):02d}-final", final_svg))
+    png_ok = True
+    for name, svg in boards:
+        (maps / f"{name}.svg").write_text(svg)
+        if png_ok:
+            png_ok = svg_to_png(svg, maps / f"{name}.png")
+    if not png_ok:
+        print("[diplo]   note: PNG maps skipped (install cairosvg and the system cairo library to get them)")
     out = game_dir / "game.html"
     out.write_text(render_html(events, views, final_svg, final_centers), encoding="utf-8")
     return out

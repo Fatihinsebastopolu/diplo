@@ -1,3 +1,4 @@
 anthropic==2.4.0
 diplomacy==1.1.2
+cairosvg==2.9.1     # optional: PNG copies of the board maps (needs the system cairo library)
 pytest
