@@ -259,3 +259,23 @@ def test_png_export_is_optional(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "cairosvg", None)  # import now raises ImportError
     assert svg_to_png("<svg/>", tmp_path / "x.png") is False
     assert not (tmp_path / "x.png").exists()
+
+
+def test_live_board_serves_state_and_hides_other_powers_press(tmp_path):
+    import urllib.request
+    from diplo.live import LiveBoard
+
+    board = LiveBoard(port=0, viewer_power="FRANCE").start()
+    try:
+        llm = AnthropicClient(client=FakeAnthropic(scripted_responder))
+        agents = {p: LLMAgent(p, llm) for p in new_game().powers}
+        GameRunner(agents, tmp_path, max_year=1901, press_rounds=1, llm=llm, observer=board).run()
+        state = json.loads(urllib.request.urlopen(board.url + "state").read())
+        assert state["status"] == "game over" and state["phase"] == "S1902M"
+        assert state["messages"] and all("FRANCE" in (m["sender"], m["recipient"]) for m in state["messages"])
+        assert all(r.split(": ", 1)[1] for r in state["results"])
+        svg = urllib.request.urlopen(board.url + "board.svg").read()
+        assert b"<svg" in svg
+        assert b"Diplomacy live board" in urllib.request.urlopen(board.url).read()
+    finally:
+        board.stop()

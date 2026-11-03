@@ -90,8 +90,13 @@ def _play_one_game(args, gdir: Path, game_seed: int, human: str | None = None, r
     config = {k: getattr(args, k) for k in GAME_OPTIONS}
     config.update(game_seed=game_seed, human=human, replayed=replay is not None)
     try:
+        board = getattr(args, "_board", None)
+        if board is not None:
+            board.viewer_power = human  # a human sees only their own messages
+            board.title = f"{'Replay: ' if replay else ''}{'You are ' + human.title() if human else 'Agent-only game'}"
+            board._update(title=board.title, viewer=human, messages=[], results=[])
         s = GameRunner(agents, gdir, max_year=args.max_year, press_rounds=args.press_rounds,
-                       llm=llm, config=config).run()
+                       llm=llm, config=config, observer=board).run()
     finally:
         if recorder:
             recorder.close()
@@ -195,6 +200,11 @@ def main(argv=None):
                        help="LLM powers that never send messages (they still read them)")
         p.add_argument("--replay", metavar="PATH",
                        help="re-run recorded game(s) from a recording.jsonl or a run directory, with no API calls")
+        p.add_argument("--live", action="store_true",
+                       help="serve a live board at http://localhost:PORT while the game runs")
+        p.add_argument("--live-port", type=int, default=8765)
+        p.add_argument("--live-delay", type=float, default=0.0,
+                       help="seconds to pause after each phase (useful with --replay for watching)")
         p.add_argument("--seed", type=int, default=None)
         p.add_argument("--out", default="runs", help="output directory (default %(default)s)")
 
@@ -223,7 +233,26 @@ def main(argv=None):
     args = ap.parse_args(argv)
     if args.cmd == "play" and not args.power and not args.replay:
         ap.error("play needs --power (or --replay)")
-    args.fn(args)
+    board = None
+    if getattr(args, "live", False):
+        from .live import LiveBoard
+
+        try:
+            board = LiveBoard(port=args.live_port, delay=args.live_delay).start()
+        except OSError as e:
+            sys.exit(f"cannot start the live board on port {args.live_port} ({e}); try --live-port")
+        args._board = board
+        print(f"[diplo] live board: {board.url}  (open it in a browser)")
+    try:
+        args.fn(args)
+    finally:
+        if board is not None:
+            if sys.stdin.isatty():
+                try:
+                    input("[diplo] game finished; the live board stays up. Press Enter to close it. ")
+                except (EOFError, KeyboardInterrupt):
+                    pass
+            board.stop()
 
 
 if __name__ == "__main__":

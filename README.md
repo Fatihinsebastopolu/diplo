@@ -59,8 +59,11 @@ with an error instead of continuing with made-up moves.
 # Agent-only game, 1901-1903, two negotiation rounds per movement phase
 python -m diplo sim --max-year 1903
 
-# Play France yourself against six agents
-python -m diplo play --power FRANCE --max-year 1903
+# Play France yourself against six agents, with a live board in your browser
+python -m diplo play --power FRANCE --max-year 1903 --live
+
+# Watch a recorded game play out on the live board, 3 seconds per phase (no key needed)
+python -m diplo sim --replay results/claude-haiku-5-5-1903 --live --live-delay 3
 
 # Free, offline baseline: every power plays random legal orders
 python -m diplo sim --random A,E,F,G,I,R,T --games 20 --max-year 1910
@@ -79,6 +82,7 @@ Common options (for both `sim` and `play`):
 |---|---|
 | `--model` | Claude model ID. The default is `claude-haiku-5-5` (cheap); stronger options are `claude-sonnet-5-5` and `claude-opus-5-5`. |
 | `--replay PATH` | Re-run recorded game(s) with no API calls (see above). |
+| `--live`, `--live-port`, `--live-delay` | Serve a live board at `http://localhost:8765` (or another port) while the game runs. `--live-delay` pauses after each phase so a replay can be watched. |
 | `--effort` | `low`, `medium` (the default), `high`, `xhigh` or `max`. Higher effort is slower and costs more. |
 | `--max-year` | The game stops after this year's winter adjustments (default 1905). It also stops early on an 18-center solo win. |
 | `--press-rounds` | Negotiation rounds per movement phase (default 2; 0 means no press). |
@@ -86,6 +90,14 @@ Common options (for both `sim` and `play`):
 | `--silent POWERS` | LLM powers that read messages but never send any. |
 | `--games N` | Number of games, for `sim` only. |
 | `--seed`, `--out` | Random seed for the baseline agents, and the output directory (default `runs/`). |
+
+**Live board.** With `--live`, open the printed URL in a browser. The page follows the
+game once a second. It shows the current map, then the same map with every power's
+orders drawn once orders are revealed, plus center counts, the last phase's results,
+and messages. In `play` mode it shows only messages you sent or received, so it
+reveals nothing you couldn't see anyway. In `sim` mode it shows every message. The
+server listens only on this machine (127.0.0.1). It stays up after the game until you
+press Enter. Under WSL, the Windows browser can open `localhost` directly.
 
 In `play` mode, each negotiation round asks you for lines like `ENGLAND: DMZ in the
 Channel?`; a blank line ends the round. For orders, type them separated by commas, e.g.
@@ -181,6 +193,7 @@ These map to the engineering credibility checks in the Milestone 1 brief.
 | `diplo/llm.py` | The Claude client. It handles JSON-schema output, prompt caching on the system prompt, refusal handling, server-side fallback (Sonnet/Opus) and token/cost accounting. The recorder and replayer save responses and serve them back, keyed by a hash of each request. |
 | `diplo/runner.py` | The game loop. Agents are called in parallel within each round. Every round is simultaneous: all agents see the same messages, and replies appear in the next round. |
 | `diplo/report.py` | The transcript and multi-game report. |
+| `diplo/live.py` | The live board: a standard-library web server, fed by hooks in the runner. |
 | `diplo/viewer.py` | Rebuilds a logged game in the engine, renders a map for each phase (with the `diplomacy` package's renderer), analyses promises vs actions, and writes `game.html`. |
 
 Each agent keeps a short memory between phases (`private_notes`, at most 2,000
@@ -201,8 +214,9 @@ characters). It also sees the last 40 messages it sent or received.
   list are fixed to the standard seven powers.
 - **No time limits.** Negotiation is a fixed number of simultaneous rounds; there are
   no deadlines or real-time chat.
-- **No live map while playing.** In `play` mode the human reads the board as text. The
-  maps exist only in `game.html` after the game.
+- **Live board is view-only.** You still type messages and orders in the terminal. The
+  board can't draw your drafted orders before you submit them, and it doesn't animate
+  how orders resolve.
 - **The legality check can't catch lies.** An agent can still misstate the board in
   free text, or break a promise. The check covers orders and explicit proposals only.
 - **Slow in `play` mode.** The human waits while the six agents' calls run, and each

@@ -33,6 +33,7 @@ class GameRunner:
         config: dict | None = None,
         map_name: str = "standard",
         workers: int = 7,
+        observer=None,
     ):
         self.game = new_game(map_name)
         missing = set(self.game.powers) - set(agents)
@@ -46,6 +47,7 @@ class GameRunner:
         self.llm = llm
         self.config = config or {}
         self.workers = workers
+        self.observer = observer
         self.press: list[Press] = []
         self.events = open(self.out_dir / "events.jsonl", "w", encoding="utf-8")
         self.stats = {
@@ -67,6 +69,15 @@ class GameRunner:
     def log(self, kind: str, **data) -> None:
         self.events.write(json.dumps({"t": round(time.time(), 2), "event": kind, **data}) + "\n")
         self.events.flush()
+
+    def _notify(self, hook: str, *args) -> None:
+        """Call an observer hook (e.g. the live board); its failures never stop the game."""
+        if self.observer is None:
+            return
+        try:
+            getattr(self.observer, hook)(*args)
+        except Exception as e:  # noqa: BLE001
+            self.log("observer_error", hook=hook, error=repr(e))
 
     # ------------------------------------------------------------------ helpers
     def _parallel(self, fn, powers: list[str]) -> dict[str, object]:
@@ -107,6 +118,7 @@ class GameRunner:
                 st["proposals"] += len(good) + len(bad)
                 st["illegal_proposals"] += len(bad)
                 self.log("press", **asdict(msg))
+                self._notify("press", msg)
 
     def _order_round(self, snaps: dict) -> dict[str, OrderOutcome]:
         phase = self.game.get_current_phase()
@@ -156,19 +168,23 @@ class GameRunner:
             all_orders = g.get_all_possible_orders()
             alive = [p for p in g.powers if not g.powers[p].is_eliminated()]
             snaps = {p: snapshot(g, p, all_orders) for p in alive}
+            self._notify("phase_start", g, phase)
             if g.phase_type == "M" and self.press_rounds > 0:
                 legal_any = all_legal_orders(g, all_orders)
                 for r in range(self.press_rounds):
                     self._press_round(r, snaps, legal_any)
             needs_orders = {p: s for p, s in snaps.items() if s.legal_by_loc}
             self._order_round(needs_orders)
+            self._notify("orders_set", g, phase)
             g.process()
             self.log("phase_result", phase=phase, centers=sc_counts(g),
                      results={str(u): [str(x) for x in rs] for u, rs in g.result_history[phase].items() if rs})
             if self.llm is not None:
                 self.log("usage", phase=phase, **self.llm.usage.to_dict())
+            self._notify("phase_end", g, phase)
 
         summary = self._summary(time.time() - start)
+        self._notify("game_end", g, summary)
         self.log("game_end", **summary)
         self.events.close()
         (self.out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
