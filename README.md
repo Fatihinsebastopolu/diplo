@@ -27,8 +27,7 @@ The project has three design goals:
 ## Setup
 
 Requires Python 3.10+ (tested on 3.14). A live game with Claude agents needs an Anthropic
-API key. Replaying a recorded game, the random baseline, the tests and the local Ollama
-backend do not.
+API key. Replaying a recorded game, the random baseline and the tests do not.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
@@ -63,9 +62,6 @@ python -m diplo sim --max-year 1903
 # Play France yourself against six agents
 python -m diplo play --power FRANCE --max-year 1903
 
-# Free local model through Ollama (run `ollama pull qwen3:4b` first)
-python -m diplo sim --backend ollama --max-year 1902
-
 # Free, offline baseline: every power plays random legal orders
 python -m diplo sim --random A,E,F,G,I,R,T --games 20 --max-year 1910
 
@@ -81,10 +77,8 @@ Common options (for both `sim` and `play`):
 
 | Option | Meaning |
 |---|---|
-| `--model` | Model ID. The default is `claude-haiku-5-5` (cheap); stronger options are `claude-sonnet-5-5` and `claude-opus-5-5`. With `--backend ollama` the default is `qwen3:4b`. |
-| `--backend` | `anthropic` (the default) or `ollama`, for a free local model. |
+| `--model` | Claude model ID. The default is `claude-haiku-5-5` (cheap); stronger options are `claude-sonnet-5-5` and `claude-opus-5-5`. |
 | `--replay PATH` | Re-run recorded game(s) with no API calls (see above). |
-| `--ollama-host`, `--num-ctx` | Ollama server URL (default `$OLLAMA_HOST` or `http://localhost:11434`) and context window (default 16384). |
 | `--effort` | `low`, `medium` (the default), `high`, `xhigh` or `max`. Higher effort is slower and costs more. |
 | `--max-year` | The game stops after this year's winter adjustments (default 1905). It also stops early on an 18-center solo win. |
 | `--press-rounds` | Negotiation rounds per movement phase (default 2; 0 means no press). |
@@ -141,13 +135,17 @@ viewer existed.
 
 ## Recorded results
 
-`results/` holds two recorded games. Open each `game.html` in a browser, or replay a game
-with `python -m diplo sim --replay results/<dir>`; no key is needed.
+`results/` holds a recorded game. Open its `game.html` in a browser, or replay it with
+`python -m diplo sim --replay results/claude-haiku-5-5-1903`; no key is needed.
 
 | Directory | Agents | Length | Result |
 |---|---|---|---|
 | `claude-haiku-5-5-1903` | All 7 powers on `claude-haiku-5-5`, effort medium, 2 negotiation rounds | 1901–1903, 165 s | 136 API calls, est. $0.135. 0/186 illegal orders, 0/427 illegal proposals, 223 messages. 93% of own-unit proposals carried out; 8 cases of different plans told to different powers. |
-| `ollama-qwen3-4b-1901` | France on local `qwen3:4b` (CPU, thinking off), 6 random powers, 1 negotiation round | 1901, 318 s | $0. Spring orders legal; in fall it reused its spring orders after its units had moved, so 2 orders were illegal, the repair failed, and its units held. 3/6 proposals illegal. Identical generic messages to three powers. |
+
+An earlier version had an optional backend for local open-weight models through Ollama.
+It was tested with `qwen3:4b` on a CPU: one game year took 318 s, and the model reused
+stale orders and sent generic messages. A recorded Haiku game replays for free, so the
+backend was removed. The last commit that includes it is `84c1e4e`.
 
 ## Things to try
 
@@ -163,9 +161,9 @@ These map to the engineering credibility checks in the Milestone 1 brief.
    other powers still send messages, including to England.
 4. **Agents give meaningful orders without press.** Run `sim --press-rounds 0` and
    compare centers and orders with a run that has press.
-5. **Cost and quality.** Run the same settings with the default Haiku model, with
-   `--model claude-opus-5-5`, and with `--backend ollama`. Compare the cost per game
-   and the illegal-order rates in the reports.
+5. **Cost and quality.** Run the same settings with the default Haiku model and with
+   `--model claude-opus-5-5`. Compare the cost per game and the illegal-order rates in
+   the reports.
 6. **Promises.** Open a game's `game.html` and look for "not kept" rows and the
    "told different powers different plans" warnings. Then compare the per-power
    promise-keeping rates in `report.md`.
@@ -178,7 +176,7 @@ These map to the engineering credibility checks in the Milestone 1 brief.
 |---|---|
 | `diplo/engine.py` | Wraps the `diplomacy` package. It builds a read-only snapshot for each power (board text, recent results, legal orders, build/disband counts) and validates orders and proposals. |
 | `diplo/agents.py` | The agents. `LLMAgent` makes one structured-JSON Claude call per negotiation round and one per order phase, plus at most one repair call. `RandomAgent` is a baseline. `HumanAgent` is the terminal player. |
-| `diplo/llm.py` | The model backends. The Claude client handles JSON-schema output, prompt caching on the system prompt, refusal handling, server-side fallback (Sonnet/Opus) and token/cost accounting. The Ollama client uses JSON-schema output on a local model. The recorder and replayer save responses and serve them back, keyed by a hash of each request. |
+| `diplo/llm.py` | The Claude client. It handles JSON-schema output, prompt caching on the system prompt, refusal handling, server-side fallback (Sonnet/Opus) and token/cost accounting. The recorder and replayer save responses and serve them back, keyed by a hash of each request. |
 | `diplo/runner.py` | The game loop. Agents are called in parallel within each round. Every round is simultaneous: all agents see the same messages, and replies appear in the next round. |
 | `diplo/report.py` | The transcript and multi-game report. |
 | `diplo/viewer.py` | Rebuilds a logged game in the engine, renders a map for each phase (with the `diplomacy` package's renderer), analyses promises vs actions, and writes `game.html`. |
@@ -188,11 +186,9 @@ characters). It also sees the last 40 messages it sent or received.
 
 ## Current limitations
 
-- **Not yet measured with the real API.** The test suite uses a fake Claude client, so
-  play quality, cost per game and real illegal-order rates are still to be measured.
-- **The Ollama backend hasn't been tested against a real server yet.** It is written to
-  Ollama's documented `/api/chat` API and tested only with a fake transport. Small local
-  models are expected to play noticeably worse and to need more order repairs.
+- **Measured on only one short game so far.** The recorded Haiku game (1901–1903) is
+  the only real-API run. Its cost, legality and promise figures are examples, not
+  statistics. The test suite uses a fake Claude client.
 - **Cost figures are estimates.** They come from token counts and list prices in
   `diplo/llm.py`. If a refusal fallback runs on another model, the cost is still
   priced at the requested model's rate.

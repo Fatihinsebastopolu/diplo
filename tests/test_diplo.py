@@ -7,7 +7,7 @@ import pytest
 from diplo.agents import LLMAgent, RandomAgent
 from diplo.engine import check_proposals, all_legal_orders, new_game, snapshot, validate_orders
 from diplo import cli
-from diplo.llm import AnthropicClient, LLMError, OllamaClient, ReplayClient, ReplayMiss
+from diplo.llm import AnthropicClient, LLMError, ReplayClient, ReplayMiss
 from diplo.report import aggregate, transcript
 from diplo.runner import GameRunner
 
@@ -201,24 +201,6 @@ def test_replay_divergence_is_reported():
     client = ReplayClient("claude-haiku-5-5", {})
     with pytest.raises(ReplayMiss):
         client.json_call("s", "u", {})
-
-
-# ----------------------------------------------------------------- Ollama
-
-def test_ollama_request_and_usage():
-    sent = {}
-
-    def transport(url, payload):
-        sent.update(url=url, payload=payload)
-        return {"message": {"content": json.dumps({"orders": ["A PAR H"], "private_notes": ""})},
-                "prompt_eval_count": 900, "eval_count": 50, "done_reason": "stop"}
-
-    c = OllamaClient("qwen3:4b", host="localhost:11434", num_ctx=8192, transport=transport)
-    assert c.json_call("sys", "user", {"type": "object"}) == {"orders": ["A PAR H"], "private_notes": ""}
-    assert sent["url"] == "http://localhost:11434/api/chat"
-    assert sent["payload"]["format"] == {"type": "object"} and sent["payload"]["stream"] is False
-    assert sent["payload"]["options"]["num_ctx"] == 8192
-    assert c.usage.input_tokens == 900 and c.usage.cost_usd == 0
 
 
 # ----------------------------------------------------------------- viewer / promises

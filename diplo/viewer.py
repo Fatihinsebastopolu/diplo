@@ -252,7 +252,7 @@ def render_html(events: list[dict], views: list[PhaseView], final_svg: str, fina
     out = ["<!doctype html><html lang='en'><head><meta charset='utf-8'>",
            "<meta name='viewport' content='width=device-width, initial-scale=1'>",
            "<title>Diplomacy game viewer</title>", f"<style>{CSS}</style></head><body>"]
-    desc = f"{cfg.get('backend', '?')} / {cfg.get('model', '?')}"
+    desc = str(cfg.get("model", "?"))
     if cfg.get("replayed"):
         desc += " (replayed)"
     out.append(f"<header><h1>Diplomacy game</h1><div class='muted'>Agents: {html.escape(desc)}; "

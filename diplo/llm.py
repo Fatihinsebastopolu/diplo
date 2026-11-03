@@ -1,7 +1,6 @@
 """LLM backends with one interface: `json_call(system, user, schema) -> dict`.
 
 - AnthropicClient: Claude API (structured JSON output, cost accounting).
-- OllamaClient:    local open-weight models through an Ollama server (free).
 - Recorder / ReplayClient: save every response of a game to a JSONL file and
   serve it back later, so a recorded game re-runs identically with no API key.
 """
@@ -10,14 +9,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import threading
-import urllib.error
-import urllib.request
 from dataclasses import dataclass, field
 
 DEFAULT_CLAUDE_MODEL = "claude-haiku-5-5"
-DEFAULT_OLLAMA_MODEL = "qwen3:4b"
 
 # USD per million tokens: (input, output, cache read). Cache writes are billed
 # at 1.25x input. First-party API list prices as of 2026-10; estimates only.
@@ -138,7 +133,7 @@ class AnthropicClient(LLMClient):
         except anthropic.AuthenticationError as e:
             raise SystemExit(
                 "Claude API authentication failed. Set ANTHROPIC_API_KEY, or run without a key using "
-                "--replay <recording>, --backend ollama, or --random for every power."
+                "--replay <recording>, or --random for every power."
             ) from e
         except (anthropic.RateLimitError, anthropic.APIConnectionError, anthropic.InternalServerError) as e:
             self.usage.bump("api_errors")
@@ -162,67 +157,6 @@ class AnthropicClient(LLMClient):
             raise LLMError("response hit max_tokens before finishing")
         text = next((b.text for b in resp.content if b.type == "text"), "")
         return _parse_json(text), tokens
-
-
-# --------------------------------------------------------------------------- Ollama
-
-
-class OllamaClient(LLMClient):
-    """Local model via Ollama's /api/chat with JSON-schema constrained output."""
-
-    backend = "ollama"
-
-    def __init__(self, model: str = DEFAULT_OLLAMA_MODEL, host: str | None = None,
-                 num_ctx: int = 16384, timeout: float = 600, think: bool = False, transport=None):
-        super().__init__(model)
-        self.host = (host or os.environ.get("OLLAMA_HOST") or "http://localhost:11434").rstrip("/")
-        if not self.host.startswith("http"):
-            self.host = "http://" + self.host
-        self.num_ctx = num_ctx
-        self.timeout = timeout
-        self.think = think
-        self.transport = transport or self._http_post
-
-    def _http_post(self, url: str, payload: dict) -> dict:
-        req = urllib.request.Request(url, data=json.dumps(payload).encode(),
-                                     headers={"Content-Type": "application/json"})
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as r:
-                return json.loads(r.read())
-        except urllib.error.HTTPError as e:
-            raise LLMError(f"Ollama HTTP {e.code}: {e.read()[:300]!r}") from e
-        except TimeoutError as e:
-            raise LLMError(f"Ollama call timed out after {self.timeout:.0f}s") from e
-        except urllib.error.URLError as e:
-            if isinstance(e.reason, TimeoutError):
-                raise LLMError(f"Ollama call timed out after {self.timeout:.0f}s") from e
-            raise SystemExit(f"Cannot reach Ollama at {self.host} ({e.reason}). Is `ollama serve` running?") from e
-        except ConnectionError as e:
-            raise SystemExit(f"Cannot reach Ollama at {self.host} ({e}). Is `ollama serve` running?") from e
-
-    def _call(self, system, user, schema, max_tokens):
-        payload = {
-            "model": self.model,
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-            "format": schema,
-            "stream": False,
-            # Reasoning models (e.g. Qwen3) think before answering; on a CPU that can take
-            # many minutes per call, so it is off unless --think is given.
-            "think": self.think,
-            # Ollama's default context window is small and truncates long prompts silently.
-            "options": {"num_ctx": self.num_ctx, "num_predict": min(max_tokens, 4096)},
-        }
-        try:
-            resp = self.transport(f"{self.host}/api/chat", payload)
-        except LLMError:
-            self.usage.bump("api_errors")
-            raise
-        tokens = {"input": resp.get("prompt_eval_count", 0) or 0, "output": resp.get("eval_count", 0) or 0,
-                  "cache_read": 0, "cache_write": 0}
-        self.usage.add_tokens(self.model, tokens["input"], tokens["output"])
-        if resp.get("done_reason") == "length":
-            raise LLMError("local model hit its output limit before finishing")
-        return _parse_json(resp.get("message", {}).get("content", "")), tokens
 
 
 def _parse_json(text: str) -> dict:

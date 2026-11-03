@@ -12,9 +12,7 @@ from .agents import HumanAgent, LLMAgent, RandomAgent
 from .engine import POWERS
 from .llm import (
     DEFAULT_CLAUDE_MODEL,
-    DEFAULT_OLLAMA_MODEL,
     AnthropicClient,
-    OllamaClient,
     Recorder,
     RecordingClient,
     ReplayClient,
@@ -25,7 +23,7 @@ from .runner import GameRunner
 from .viewer import build_viewer
 
 # Options that define a game; saved in each recording so --replay can restore them.
-GAME_OPTIONS = ["backend", "model", "effort", "max_year", "press_rounds", "random", "silent", "num_ctx", "think"]
+GAME_OPTIONS = ["model", "effort", "max_year", "press_rounds", "random", "silent"]
 
 
 def _powers(values) -> list[str]:
@@ -43,9 +41,6 @@ def _powers(values) -> list[str]:
 
 
 def _live_client(args):
-    if args.backend == "ollama":
-        return OllamaClient(model=args.model, host=args.ollama_host, num_ctx=args.num_ctx,
-                            timeout=args.ollama_timeout, think=args.think)
     return AnthropicClient(model=args.model, effort=args.effort)
 
 
@@ -113,8 +108,6 @@ def _print_result(s):
 def cmd_sim(args):
     if args.replay:
         return _replay(args)
-    if args.backend == "ollama" and args.model == DEFAULT_CLAUDE_MODEL:
-        args.model = DEFAULT_OLLAMA_MODEL
     run_dir = Path(args.out) / time.strftime("sim-%Y%m%d-%H%M%S")
     rng = random.Random(args.seed)
     for i in range(args.games):
@@ -130,8 +123,6 @@ def cmd_sim(args):
 def cmd_play(args):
     if args.replay:
         return _replay(args)
-    if args.backend == "ollama" and args.model == DEFAULT_CLAUDE_MODEL:
-        args.model = DEFAULT_OLLAMA_MODEL
     human = _powers([args.power])[0]
     run_dir = Path(args.out) / time.strftime(f"play-{human.lower()}-%Y%m%d-%H%M%S")
     print(f"You are {human}. Log: {run_dir}")
@@ -192,9 +183,8 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def common(p):
-        p.add_argument("--backend", default="anthropic", choices=["anthropic", "ollama"])
         p.add_argument("--model", default=DEFAULT_CLAUDE_MODEL,
-                       help=f"model ID (default {DEFAULT_CLAUDE_MODEL}; {DEFAULT_OLLAMA_MODEL} with --backend ollama)")
+                       help=f"Claude model ID (default {DEFAULT_CLAUDE_MODEL})")
         p.add_argument("--effort", default="medium", choices=["low", "medium", "high", "xhigh", "max"],
                        help="Claude effort level (default %(default)s)")
         p.add_argument("--max-year", type=int, default=1905, help="stop after this game year (default %(default)s)")
@@ -203,12 +193,6 @@ def main(argv=None):
                        help="powers played by the random baseline instead of the LLM, e.g. --random ITA,TUR")
         p.add_argument("--silent", action="append", metavar="POWERS",
                        help="LLM powers that never send messages (they still read them)")
-        p.add_argument("--ollama-host", default=None, help="Ollama URL (default $OLLAMA_HOST or localhost:11434)")
-        p.add_argument("--num-ctx", type=int, default=16384, help="Ollama context window (default %(default)s)")
-        p.add_argument("--think", action="store_true",
-                       help="Ollama: let reasoning models think before answering (much slower on CPU)")
-        p.add_argument("--ollama-timeout", type=float, default=600,
-                       help="Ollama: seconds before a call counts as failed (default %(default)s)")
         p.add_argument("--replay", metavar="PATH",
                        help="re-run recorded game(s) from a recording.jsonl or a run directory, with no API calls")
         p.add_argument("--seed", type=int, default=None)
