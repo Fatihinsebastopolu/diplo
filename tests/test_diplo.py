@@ -424,3 +424,46 @@ def test_ledger_reaches_agent_prompts(tmp_path):
     assert all("## Relationships (computed by the game" in c for c in seen)
     fall = [c for c in seen if "Current phase: F1901M" in c]
     assert fall and any("promises to you" in c for c in fall)
+
+
+
+def test_promised_hold_is_kept_by_staying_in_place():
+    g = new_game()
+    view = PhaseView("S1901M", {p: list(g.get_units(p)) for p in g.powers}, {},
+                     {"RUSSIA": ["F SEV S A MOS", "A WAR - GAL"]},
+                     press=[_msg("RUSSIA", "TURKEY", ["F SEV H", "A WAR H"])])
+    kept = {c.proposed: c.kept for c in analyse_promises(view)}
+    assert kept == {"F SEV H": True, "A WAR H": False}
+
+
+def test_human_player_sees_ledger_in_terminal_and_live_board(tmp_path):
+    import urllib.request
+    from diplo.live import LiveBoard
+    printed = []
+    # France promises England to hold Brest, then moves it; England is the human
+    script = iter(["FRANCE: hi", "", "", "", "", "", "", ""])
+    human = HumanAgent("ENGLAND", input_fn=lambda prompt="": next(script, ""), print_fn=printed.append)
+
+    def responder(kw):
+        c = kw["messages"][0]["content"]
+        if "orders" in kw["output_config"]["format"]["schema"]["properties"]:
+            return {"orders": ["F BRE - MAO"] if "You are FRANCE" in c else [], "private_notes": ""}
+        to = kw["output_config"]["format"]["schema"]["properties"]["messages"]["items"]["properties"]["to"]["enum"]
+        if "You are FRANCE" in c and "ENGLAND" in to:
+            return {"messages": [{"to": "ENGLAND", "text": "I'll hold Brest.", "proposed_orders": ["F BRE H"]}],
+                    "private_notes": ""}
+        return {"messages": [], "private_notes": ""}
+
+    llm = AnthropicClient(client=FakeAnthropic(responder))
+    agents = {p: LLMAgent(p, llm) for p in new_game().powers}
+    agents["ENGLAND"] = human
+    board = LiveBoard(port=0, viewer_power="ENGLAND").start()
+    try:
+        GameRunner(agents, tmp_path, max_year=1901, press_rounds=1, llm=llm, observer=board).run()
+        fall = printed.index(next(p for p in printed if "F1901M negotiation" in str(p)))
+        text = "\n".join(map(str, printed[fall:]))
+        assert "FRANCE: kept 0 of 1 promises to you (broke S1901M: said F BRE H, did F BRE - MAO)" in text
+        state = json.loads(urllib.request.urlopen(board.url + "state").read())
+        assert "FRANCE: kept 0 of 1 promises to you" in state["relations"]
+    finally:
+        board.stop()

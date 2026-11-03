@@ -613,7 +613,7 @@ Config: {'backend': 'anthropic', 'model': 'claude-haiku-5-5', 'effort': 'medium'
 - RUSSIA told AUSTRIA: `A WAR S A GAL`; did `A WAR S A GAL` (kept)
 - RUSSIA told ENGLAND: `F BOT H`; did `F BOT H` (kept)
 - RUSSIA told TURKEY: `F RUM H`; did `F RUM H` (kept)
-- RUSSIA told TURKEY: `F SEV H`; did `F SEV S F RUM` (NOT kept)
+- RUSSIA told TURKEY: `F SEV H`; did `F SEV S F RUM` (kept)
 - TURKEY told RUSSIA: `A ANK H`; did `A ANK H` (kept)
 - TURKEY told AUSTRIA: `A BUL H`; did `A BUL H` (kept)
 - TURKEY told AUSTRIA, ITALY: `A GRE H`; did `A GRE H` (kept)

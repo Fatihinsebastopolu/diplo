@@ -316,6 +316,7 @@ class HumanAgent(Agent):
         self.input = input_fn
         self.print = print_fn
         self.seen = 0
+        self._relations_shown = None
 
     def _show_inbox(self, press):
         mine = [m for m in press if self.power in (m.sender, m.recipient)]
@@ -329,14 +330,18 @@ class HumanAgent(Agent):
                 prop += f"\n      [engine note: not a legal order this phase: {'; '.join(m.illegal_proposals)}]"
             self.print(f"  << {m.sender}: {m.text}{prop}")
 
+    def _show_relations(self, snap):
+        if snap.relations_text and self._relations_shown != snap.phase:
+            self._relations_shown = snap.phase
+            self.print("Relationships (computed by the game: what each power said vs what it did):")
+            self.print(snap.relations_text)
+
     def negotiate(self, snap, press, round_idx, rounds):
         self.print(f"\n=== {snap.phase} negotiation round {round_idx + 1}/{rounds} ===")
         if round_idx == 0:
             self.print(snap.state_text)
             self.print(snap.recent_results_text)
-            if snap.relations_text:
-                self.print("Relationships (what each power said vs what it did):")
-                self.print(snap.relations_text)
+        self._show_relations(snap)
         self._show_inbox(press)
         others = [p for p in snap.alive_powers if p != self.power]
         self.print(f"Send messages as 'POWER: text' (one per line; {', '.join(others)}). Blank line to finish.")
@@ -357,6 +362,8 @@ class HumanAgent(Agent):
         self.print(f"\n=== {snap.phase} orders ({PHASE_NAMES.get(snap.phase_type)}) ===")
         if snap.phase_type != "M":
             self.print(snap.state_text)
+        else:
+            self._show_relations(snap)  # only shows if negotiation didn't already show it
         self._show_inbox(press)
         self.print(format_legal(snap))
         self.print("Enter orders separated by commas (e.g. A PAR - BUR, F BRE - MAO). Blank = all hold / none.")

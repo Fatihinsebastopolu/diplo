@@ -67,6 +67,11 @@ class LiveBoard:
         self._update(svg=Renderer(game).render(incl_orders=False), phase=phase, status=status,
                      centers=sc_counts(game))
 
+    def relations(self, texts: dict[str, str]) -> None:
+        # a human player sees their own ledger; a spectator sees none (it is per-power)
+        if self.viewer_power:
+            self._update(relations=texts.get(self.viewer_power, ""))
+
     def press(self, msg) -> None:
         if self.viewer_power and self.viewer_power not in (msg.sender, msg.recipient):
             return
@@ -142,6 +147,8 @@ PAGE = (
 <div class="map"><img id="board" alt="Current board"></div>
 <div>
 <table id="centers"></table>
+<div id="relbox" style="display:none"><h3>Relationships</h3>
+<div class="muted results" id="relations"></div></div>
 <h3>Last results</h3><div class="results muted" id="results"></div>
 <h3 id="msgtitle">Messages</h3><div id="msgs"></div>
 </div></div></section></main>
@@ -166,6 +173,9 @@ async function poll() {
         POWERS.map(p => `<tr><td>${dot(p)}</td><td>${s.centers[p] ?? ''}</td></tr>`).join('');
       document.getElementById('results').innerHTML = s.results.length
         ? `<b>${esc(s.last_phase || '')}</b><br>` + s.results.map(esc).join('<br>') : 'none yet';
+      const rel = s.relations || '';
+      document.getElementById('relbox').style.display = rel ? '' : 'none';
+      document.getElementById('relations').innerHTML = rel.split('\n').map(esc).join('<br>');
       document.getElementById('msgtitle').textContent = s.viewer ? `Messages to and from ${s.viewer}` : 'Messages (all powers)';
       const box = document.getElementById('msgs');
       box.innerHTML = s.messages.slice().reverse().map(m =>

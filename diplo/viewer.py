@@ -220,8 +220,16 @@ def analyse_promises(view: PhaseView) -> list[Claim]:
         actor = speaker if kind == "own" else told[0]  # a request goes to the unit's one owner
         actual = _actual(unit, actor, view.orders)
         claims.append(Claim(view.phase, kind, speaker, actor, unit, order, sorted(told), actual,
-                            kept=normalize_order(actual) == order))
+                            kept=_fulfils(order, normalize_order(actual))))
     return claims
+
+
+def _fulfils(proposed: str, actual: str) -> bool:
+    """Exact match, or a promised hold fulfilled by staying in place (hold, support or convoy)."""
+    if actual == proposed:
+        return True
+    a = actual.split()
+    return proposed.endswith(" H") and len(a) >= 3 and a[2] in ("H", "S", "C")
 
 
 def contradictions(claims: list[Claim]) -> list[tuple[str, str, dict[str, list[str]]]]:

@@ -107,6 +107,14 @@ reveals nothing you couldn't see anyway. In `sim` mode it shows every message. T
 server listens only on this machine (127.0.0.1). It stays up after the game until you
 press Enter. Under WSL, the Windows browser can open `localhost` directly.
 
+**Relationship ledger.** After every movement phase the game records, from each
+power's point of view, what every other power said versus what it actually ordered:
+promises kept and broken (with the latest examples), requests honored, attacks on its
+units or centers, and joint attacks fought together. Every agent's prompt includes
+this section, and it is computed by code, so agents can't misremember it. As a human
+player you see your own ledger in the terminal at the start of each movement phase and
+on the live board.
+
 In `play` mode, each negotiation round asks you for lines like `ENGLAND: DMZ in the
 Channel?`; a blank line ends the round. For orders, type them separated by commas, e.g.
 `A PAR - BUR, A MAR - SPA, F BRE - MAO`. The prompt shows the legal orders for each of
@@ -152,8 +160,9 @@ viewer existed.
   recipient actually ordered.
 - **Different plans to different powers:** when a power proposes different orders for
   the same unit to different powers, this is flagged.
-- **Limits:** only exact order matches count, and a unit with no order counts as
-  holding. Proposals about third parties' units are ignored. Promises made only in free
+- **Limits:** only exact order matches count, except that a promised hold is kept if
+  the unit stayed in place (it held, supported or convoyed). A unit with no order counts
+  as holding. Proposals about third parties' units are ignored. Promises made only in free
   text, e.g. "I won't attack you", are not detected.
 
 ## Recorded results
@@ -163,7 +172,7 @@ viewer existed.
 
 | Directory | Agents | Length | Result |
 |---|---|---|---|
-| `claude-haiku-5-5-1903` | All 7 powers on `claude-haiku-5-5`, effort medium, 2 negotiation rounds | 1901–1903, 165 s | 136 API calls, est. $0.135. 0/186 illegal orders, 0/427 illegal proposals, 223 messages. 93% of own-unit proposals carried out; 8 cases of different plans told to different powers. |
+| `claude-haiku-5-5-1903` | All 7 powers on `claude-haiku-5-5`, effort medium, 2 negotiation rounds | 1901–1903, 165 s | 136 API calls, est. $0.135. 0/186 illegal orders, 0/427 illegal proposals, 223 messages. 94% of own-unit proposals carried out; 8 cases of different plans told to different powers. |
 
 An earlier version had an optional backend for local open-weight models through Ollama.
 It was tested with `qwen3:4b` on a CPU: one game year took 318 s, and the model reused
@@ -203,6 +212,7 @@ These map to the engineering credibility checks in the Milestone 1 brief.
 | `diplo/runner.py` | The game loop. Agents are called in parallel within each round. Every round is simultaneous: all agents see the same messages, and replies appear in the next round. |
 | `diplo/report.py` | The transcript and multi-game report. |
 | `diplo/live.py` | The live board: a standard-library web server, fed by hooks in the runner. |
+| `diplo/relations.py` | The relationship ledger shown to agents and the human player. |
 | `diplo/viewer.py` | Rebuilds a logged game in the engine, renders a map for each phase (with the `diplomacy` package's renderer), analyses promises vs actions, and writes `game.html`. |
 
 Each agent keeps a short memory between phases (`private_notes`, at most 2,000

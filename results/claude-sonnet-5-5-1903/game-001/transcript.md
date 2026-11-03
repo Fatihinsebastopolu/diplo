@@ -342,7 +342,7 @@ Config: {'model': 'claude-sonnet-5-5', 'effort': 'medium', 'max_year': 1903, 'pr
 - TURKEY told AUSTRIA: `A BUL H`; did `A BUL H` (kept)
 - TURKEY asked ITALY: `F NAP - ION`; ITALY did `F NAP - ION` (honored)
 - TURKEY told AUSTRIA, RUSSIA: `F RUM H`; did `F RUM H` (kept)
-- TURKEY asked RUSSIA: `F SEV H`; RUSSIA did `F SEV S A UKR - RUM` (not honored)
+- TURKEY asked RUSSIA: `F SEV H`; RUSSIA did `F SEV S A UKR - RUM` (honored)
 
 *After S1902M: centers AUS 5, ENG 4, FRA 6, GER 5, ITA 4, RUS 5, TUR 5*
 
@@ -696,7 +696,7 @@ Config: {'model': 'claude-sonnet-5-5', 'effort': 'medium', 'max_year': 1903, 'pr
 - AUSTRIA asked TURKEY: `A BUL H`; TURKEY did `A BUL H` (honored)
 - AUSTRIA told TURKEY: `A GRE H`; did `A GRE H` (kept)
 - AUSTRIA asked GERMANY: `A MUN H`; GERMANY did `A MUN - RUH` (not honored)
-- AUSTRIA told TURKEY: `A SER H`; did `A SER S A BUD - TRI` (NOT kept)
+- AUSTRIA told TURKEY: `A SER H`; did `A SER S A BUD - TRI` (kept)
 - AUSTRIA told RUSSIA: `A SER S A BUD - TRI`; did `A SER S A BUD - TRI` (kept)
 - AUSTRIA told RUSSIA: `F ALB S A BUD - TRI`; did `F ALB S A BUD - TRI` (kept)
 - ENGLAND asked FRANCE: `A BEL - HOL`; FRANCE did `A BEL H` (not honored)
@@ -724,7 +724,7 @@ Config: {'model': 'claude-sonnet-5-5', 'effort': 'medium', 'max_year': 1903, 'pr
 - TURKEY told ITALY: `A BUL - GRE`; did `A BUL H` (NOT kept)
 - TURKEY told AUSTRIA: `A BUL H`; did `A BUL H` (kept)
 - TURKEY asked AUSTRIA: `A GRE H`; AUSTRIA did `A GRE H` (honored)
-- TURKEY asked AUSTRIA: `A SER H`; AUSTRIA did `A SER S A BUD - TRI` (not honored)
+- TURKEY asked AUSTRIA: `A SER H`; AUSTRIA did `A SER S A BUD - TRI` (honored)
 - TURKEY asked ITALY: `F ION - ALB`; ITALY did `F ION - ALB` (honored)
 - **AUSTRIA told different powers different plans for A SER:** `A SER H` to TURKEY; `A SER S A BUD - TRI` to RUSSIA
 - **ENGLAND told different powers different plans for F NTH:** `F NTH - DEN` to FRANCE; `F NTH H` to GERMANY

@@ -195,6 +195,7 @@ class GameRunner:
             snaps = {p: snapshot(g, p, all_orders) for p in alive}
             for p, s in snaps.items():
                 s.relations_text = self.ledger.text_for(p)
+            self._notify("relations", {p: s.relations_text for p, s in snaps.items()})
             units_at_start = {p: list(g.get_units(p)) for p in g.powers}
             center_owner = {c: p for p in g.powers for c in g.get_centers(p)}
             self._notify("phase_start", g, phase)
