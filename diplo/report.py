@@ -189,6 +189,15 @@ def aggregate(run_dir: Path) -> str:
            f"final center spread (max - min) per game: {spreads}."]
     pt = promise_totals(claims, POWERS)
     tcr = [timing_cost_replies(load_events(p)) for p in sorted(Path(run_dir).rglob("events.jsonl"))]
+    resumes = [e for p in sorted(Path(run_dir).rglob("events.jsonl")) for e in load_events(p) if e["event"] == "resume"]
+    for r in resumes:
+        md += ["", "## Substitution", "",
+               f"- {r['substitute']} was taken over by a substitute agent from {r['at']} "
+               f"({'announced to the other players' if r['announce'] else 'not announced'}).",
+               f"- Handover document: {r['handover_chars']} characters (about {r['handover_chars'] // 4} tokens), "
+               f"added to each of the substitute's prompts; this is the takeover overhead.",
+               f"- Private notes restored for: {', '.join(r['restored_notes_for']) or 'none (older log)'}.",
+               "- Cost and time below cover the whole game, including the part played before the substitution."]
     years = sorted({y for t in tcr for y in t["cost_by_year"]})
     if years:
         md += ["", "## Cost and time by game year", "",

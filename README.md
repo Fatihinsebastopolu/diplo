@@ -68,6 +68,35 @@ as the template.
 - **Rules.** Rule changes beyond what the map format expresses (new unit types, other
   victory conditions) would need changes to the rules engine itself.
 
+## Substitute players (mid-game takeover)
+
+`resume` continues a logged game from any phase, with a substitute agent taking over a
+power whose player left:
+
+```bash
+python -m diplo resume runs/sim-.../game-001 --at S1903M --substitute FRANCE --years 2
+```
+
+The game is rebuilt from its log up to that phase: the board, the message history, the
+relationship ledger, and every other agent's last private notes. Those agents carry on
+as before. The substitute starts with empty notes and a **handover** in its prompt:
+
+- **Open commitments:** the last thing the previous player told each power, with any
+  orders it proposed.
+- **Playing profile, computed by code:** promise keeping, how often it told powers
+  different plans, how aggressively it used its units, its closest partner and its
+  main rival.
+- **Instructions to play as a fair substitute:** keep a similar style, honour the
+  previous player's commitments unless they clearly no longer serve the power, and
+  don't turn on a partner just because the player changed.
+
+By default the other players get a game note that a substitute has taken over; turn
+it off with `--no-announce`. The resumed game's log includes the earlier phases, so its
+viewer shows the whole game. It copies its source log, so it can be replayed on its own
+with `sim --replay`. Its `report.md` gives the handover size, which is the takeover
+overhead. Logs made before agent notes were logged resume with empty notes for
+everyone.
+
 ## Reproducing a game without an API key
 
 Every game with model agents writes a `recording.jsonl` next to its log. The file
@@ -248,6 +277,7 @@ These map to the engineering credibility checks in the Milestone 1 brief.
 | `diplo/runner.py` | The game loop. Agents are called in parallel within each round. Every round is simultaneous: all agents see the same messages, and replies appear in the next round. |
 | `diplo/report.py` | The transcript and multi-game report. |
 | `diplo/live.py` | The live board: a standard-library web server, fed by hooks in the runner. |
+| `diplo/handover.py` | Rebuilds a logged game up to a phase and writes a substitute's handover. |
 | `diplo/relations.py` | The relationship ledger shown to agents and the human player. |
 | `diplo/viewer.py` | Rebuilds a logged game in the engine, renders a map for each phase (with the `diplomacy` package's renderer), analyses promises vs actions, and writes `game.html`. |
 
