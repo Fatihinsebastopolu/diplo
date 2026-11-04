@@ -22,7 +22,8 @@ The project has three design goals:
   - Order text in a message is judged leniently on coasts, so "F RUM - BUL" counts as
     "F RUM - BUL/EC".
   - Human messages are scanned for order text too. Illegal ones are delivered with an
-    `[engine note]` that the recipient sees.
+    `[engine note]` that the recipient sees. The human sender is told at once, with that
+    unit's legal orders, but the message is still sent.
 - **Everything is measured.** Each game records:
   - token usage and estimated cost;
   - illegal-order rates, both first-attempt and after repair;

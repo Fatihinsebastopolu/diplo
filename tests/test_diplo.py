@@ -696,3 +696,13 @@ def test_resume_without_substitute(tmp_path, monkeypatch):
     res = next(e for e in load_events(rdir / "events.jsonl") if e["event"] == "resume")
     assert res["substitute"] is None and res["handover_chars"] == 0
     assert "## Resumed game" in aggregate(rdir) and "## Substitution" not in aggregate(rdir)
+
+
+def test_human_is_told_about_own_illegal_proposal():
+    lines = iter(["GERMANY: Can you support A PAR - MUN? And A PAR - BUR is fine.", ""])
+    printed = []
+    h = HumanAgent("FRANCE", input_fn=lambda _: next(lines), print_fn=printed.append)
+    g = new_game()
+    msgs = h.negotiate(snapshot(g, "FRANCE"), [], 0, 1)
+    notes = [p for p in printed if p.startswith("  (note:")]
+    assert len(msgs) == 1 and len(notes) == 1 and "A PAR - MUN" in notes[0] and "GERMANY will see" in notes[0]

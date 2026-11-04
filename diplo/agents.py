@@ -384,6 +384,10 @@ class HumanAgent(Agent):
             if to not in others or not text.strip():
                 self.print(f"  (format is POWER: message, POWER one of {', '.join(others)})")
                 continue
+            legal = {o for os_ in snap.all_legal_by_loc.values() for o in os_}
+            for o in illegal_message_orders(text, [], legal, snap.valid_locs):
+                self.print(f"  (note: {o} is {explain_proposal(o, snap.all_legal_by_loc)}. "
+                           f"{to} will see an engine note saying it is not a legal order.)")
             out.append({"to": to, "text": text.strip(), "proposed_orders": []})
         return out
 
