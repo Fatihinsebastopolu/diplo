@@ -9,6 +9,7 @@ recordings made before this module existed still replay.
 from __future__ import annotations
 
 import base64
+import re
 import html
 import json
 from dataclasses import dataclass, field
@@ -30,6 +31,19 @@ class PhaseView:
     svg: str | None = None
 
 
+def _render(game, incl_orders: bool) -> str | None:
+    """Board SVG, or None for variant maps the diplomacy package has no drawing for."""
+    try:
+        return Renderer(game).render(incl_orders=incl_orders)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def game_powers(events: list[dict]) -> list[str]:
+    start = next((e for e in events if e["event"] == "game_start"), {})
+    return list(start.get("agents", {})) or list(POWERS)
+
+
 def load_events(path: Path) -> list[dict]:
     with open(path, encoding="utf-8") as f:
         return [json.loads(line) for line in f if line.strip()]
@@ -37,7 +51,8 @@ def load_events(path: Path) -> list[dict]:
 
 def rebuild(events: list[dict], render: bool = True) -> tuple[list[PhaseView], str | None, dict]:
     """Return (phases, final_svg, final_centers). Raises if the log and engine disagree."""
-    game = new_game()
+    start = next((e for e in events if e["event"] == "game_start"), {})
+    game = new_game(start.get("map") or start.get("config", {}).get("map") or "standard")
     orders_by_phase: dict[str, dict[str, list[str]]] = {}
     press_by_phase: dict[str, list[dict]] = {}
     played: list[str] = []
@@ -65,7 +80,7 @@ def rebuild(events: list[dict], render: bool = True) -> tuple[list[PhaseView], s
             press=press_by_phase.get(phase, []),
         )
         if render:
-            v.svg = Renderer(game).render(incl_orders=True)
+            v.svg = _render(game, incl_orders=True)
         game.process()
         v.results = {str(u): [str(r) for r in rs] for u, rs in game.result_history[phase].items() if rs}
         views.append(v)
@@ -73,7 +88,7 @@ def rebuild(events: list[dict], render: bool = True) -> tuple[list[PhaseView], s
     final_centers = {p: len(game.get_centers(p)) for p in game.powers}
     if logged_final is not None and final_centers != logged_final:
         raise ValueError(f"rebuilt final centers {final_centers} differ from the log {logged_final}")
-    final_svg = Renderer(game).render(incl_orders=False) if render else None
+    final_svg = _render(game, incl_orders=False) if render else None
     return views, final_svg, final_centers
 
 
@@ -86,8 +101,9 @@ def activity(views: list[PhaseView]) -> dict[str, dict[str, int]]:
     A unit with no order counts as holding. 'dislodged' counts the power's own
     units that were dislodged.
     """
+    powers = sorted({p for v in views for p in v.units}) or list(POWERS)
     t = {p: {"moves": 0, "supports": 0, "ally_supports": 0, "convoys": 0, "holds": 0, "dislodged": 0}
-         for p in POWERS}
+         for p in powers}
     for v in views:
         if not v.phase.endswith("M"):
             continue
@@ -126,15 +142,38 @@ def _unit_base_match(unit: str, by_unit: dict) -> str | None:
 # --------------------------------------------------------------------------- PNG export
 
 
+def _css_rule(svg: str, cls: str) -> dict[str, str]:
+    m = re.search(r"\." + cls + r"\s*\{([^}]*)\}", svg)
+    if not m:
+        return {}
+    return {k.strip(): v.strip() for k, v in (d.split(":", 1) for d in m.group(1).split(";") if ":" in d)}
+
+
+def _px(size: str | None, default: float) -> float:
+    if not size:
+        return default
+    num = re.match(r"[0-9.]+", size)
+    if not num:
+        return default
+    value = float(num.group(0))
+    return value * 16 if size.endswith("em") else value
+
+
 def _raster_safe(svg: str) -> str:
     """Inline the few CSS rules cairosvg mis-renders (the score box and the labels).
 
-    The renderer styles these with CSS classes and em font sizes; cairosvg draws
-    the box black and drops the text, so they are given explicit attributes.
+    The renderer styles these with CSS classes (and, on the standard map, em font
+    sizes); cairosvg draws the box black and drops the text, so they are given
+    explicit attributes taken from each map's own CSS.
     """
-    return (svg.replace('class="currentnoterect"', 'fill="#c5dfea"')
-               .replace('class="currentnotetext"', 'font-family="serif" font-size="24" fill="black"')
-               .replace('class="currentphasetext"', 'font-family="serif" font-size="40" fill="black"'))
+    rect = _css_rule(svg, "currentnoterect")
+    note = _css_rule(svg, "currentnotetext")
+    phase = _css_rule(svg, "currentphasetext")
+    return (svg.replace('class="currentnoterect"', f'fill="{rect.get("fill", "#c5dfea")}"')
+               .replace('class="currentnotetext"',
+                        f'font-family="serif" font-size="{_px(note.get("font-size"), 24):g}" fill="black"')
+               .replace('class="currentphasetext"',
+                        f'font-family="serif" font-size="{_px(phase.get("font-size"), 40):g}" fill="black"'))
 
 
 def svg_to_png(svg: str, path: Path, width: int = 1200) -> bool:
@@ -143,8 +182,13 @@ def svg_to_png(svg: str, path: Path, width: int = 1200) -> bool:
         import cairosvg
     except (ImportError, OSError):  # OSError: cairosvg installed but the system cairo library is missing
         return False
-    cairosvg.svg2png(bytestring=_raster_safe(svg).encode(), write_to=str(path), output_width=width)
-    return True
+    for candidate in (_raster_safe(svg), svg):  # variant drawings may already set these attributes
+        try:
+            cairosvg.svg2png(bytestring=candidate.encode(), write_to=str(path), output_width=width)
+            return True
+        except Exception:  # noqa: BLE001
+            continue
+    return False
 
 
 # --------------------------------------------------------------------------- promises vs actions
@@ -241,8 +285,9 @@ def contradictions(claims: list[Claim]) -> list[tuple[str, str, dict[str, list[s
     return [(s, u, v) for (s, u), v in sorted(by_unit.items()) if len(v) > 1]
 
 
-def promise_totals(all_claims: list[Claim]) -> dict[str, dict[str, int]]:
-    t = {p: {"own": 0, "own_kept": 0, "requests": 0, "requests_honored": 0} for p in POWERS}
+def promise_totals(all_claims: list[Claim], powers: list[str] | None = None) -> dict[str, dict[str, int]]:
+    powers = powers or sorted({c.speaker for c in all_claims} | {c.actor for c in all_claims}) or list(POWERS)
+    t = {p: {"own": 0, "own_kept": 0, "requests": 0, "requests_honored": 0} for p in powers}
     for c in all_claims:
         if c.kind == "own":
             t[c.speaker]["own"] += 1
@@ -307,13 +352,25 @@ details { margin-top:10px; } summary { cursor:pointer; color:var(--muted); }
 """
 
 
-def _img(svg: str, alt: str) -> str:
+def _img(svg: str | None, alt: str) -> str:
+    if svg is None:
+        return "<p class='muted'>No map drawing is available for this variant.</p>"
     data = base64.b64encode(svg.encode()).decode()
     return f'<img alt="{html.escape(alt)}" src="data:image/svg+xml;base64,{data}">'
 
 
+EXTRA_COLORS = ["#d4823b", "#3b9fd4", "#a83bd4", "#d43b6f", "#3bd49a", "#8c8c3b", "#5b5bd4", "#d4c13b",
+                "#3bd4d4", "#d43bd4"]
+
+
+def power_color(p: str) -> str:
+    if p in POWER_COLORS:
+        return POWER_COLORS[p]
+    return EXTRA_COLORS[sum(map(ord, p)) % len(EXTRA_COLORS)]
+
+
 def _power(p: str) -> str:
-    return f'<span class="dot" style="background:{POWER_COLORS.get(p, "#999")}"></span>{p.title()}'
+    return f'<span class="dot" style="background:{power_color(p)}"></span>{p.title()}'
 
 
 def render_html(events: list[dict], views: list[PhaseView], final_svg: str, final_centers: dict) -> str:
@@ -321,7 +378,7 @@ def render_html(events: list[dict], views: list[PhaseView], final_svg: str, fina
     end = next((e for e in events if e["event"] == "game_end"), {})
     cfg = start.get("config", {})
     all_claims = [c for v in views for c in analyse_promises(v)]
-    totals = promise_totals(all_claims)
+    totals = promise_totals(all_claims, list(final_centers))
     usage = end.get("usage") or {}
 
     def pct(a, b):
@@ -343,7 +400,7 @@ def render_html(events: list[dict], views: list[PhaseView], final_svg: str, fina
         claims = analyse_promises(v)
         rows = "".join(
             f"<tr><td>{_power(p)}</td><td>{v.centers[p]}</td><td><code>{html.escape('; '.join(v.orders[p])) or '–'}</code></td></tr>"
-            for p in POWERS if v.units.get(p) or v.orders.get(p)
+            for p in v.units if v.units.get(p) or v.orders.get(p)
         )
         out.append(f"<section id='{v.phase}'><h2>{v.phase}</h2><div class='grid'>")
         out.append(f"<div class='map'>{_img(v.svg, 'Board at the start of ' + v.phase + ' with orders')}"
@@ -373,7 +430,7 @@ def render_html(events: list[dict], views: list[PhaseView], final_svg: str, fina
             out.append("</details>")
         out.append("</div></div></section>")
 
-    counts = "".join(f"<tr><td>{_power(p)}</td><td>{final_centers[p]}</td></tr>" for p in POWERS)
+    counts = "".join(f"<tr><td>{_power(p)}</td><td>{final_centers[p]}</td></tr>" for p in final_centers)
     out.append(f"<section id='final'><h2>Final board</h2><div class='grid'><div class='map'>{_img(final_svg, 'Final board')}</div>"
                f"<div><table><tr><th>Power</th><th>Centers</th></tr>{counts}</table></div></div></section>")
 
@@ -402,6 +459,8 @@ def build_viewer(game_dir: Path) -> Path:
     boards.append((f"{len(views):02d}-final", final_svg))
     png_ok = True
     for name, svg in boards:
+        if svg is None:
+            continue
         (maps / f"{name}.svg").write_text(svg)
         if png_ok:
             png_ok = svg_to_png(svg, maps / f"{name}.png")

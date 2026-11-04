@@ -557,3 +557,44 @@ def test_timing_cost_and_reply_measures(tmp_path):
     assert len(t["negotiation_round_seconds"]) == 4 and len(t["order_step_seconds"]) == 2  # no builds: no W phase
     assert set(t["cost_by_year"]) == {"1901"} and t["cost_by_year"]["1901"] > 0
     assert "## Cost and time by game year" in aggregate(tmp_path) and "human player that an agent replied" in aggregate(tmp_path)
+
+
+# ----------------------------------------------------------------- variant maps
+
+@pytest.mark.parametrize("map_name,years", [("ancmed", 2), ("modern", 1), ("pure", 2)])
+def test_variant_maps_play_and_render(tmp_path, map_name, years):
+    from diplo.engine import map_powers, phase_year
+    powers = map_powers(map_name)
+    llm = AnthropicClient(client=FakeAnthropic(scripted_responder))
+    agents = {p: RandomAgent(p, random.Random(i)) for i, p in enumerate(powers)}
+    agents[powers[0]] = LLMAgent(powers[0], llm)
+    start = phase_year(new_game(map_name).get_current_phase())
+    s = GameRunner(agents, tmp_path, max_year=start + years - 1, press_rounds=1, llm=llm, map_name=map_name).run()
+    assert set(s["centers"]) == set(powers) and s["map"] == map_name
+    assert phase_year(s["final_phase"]) in (start + years, None) or s["solo_winner"]
+    html_text = build_viewer(tmp_path).read_text()
+    assert powers[0].title() in html_text and "data:image/svg+xml;base64," in html_text
+    md = aggregate(tmp_path)
+    assert all(p in md for p in powers)
+
+
+def test_variant_prompt_and_cli_years(tmp_path, monkeypatch):
+    from diplo.agents import system_prompt
+    snap = snapshot(new_game("ancmed"), "ROME")
+    sp = system_prompt(snap)
+    assert "'ancmed' variant map, 5 powers" in sp and "18 centers wins" in sp and "TYR" not in sp
+    monkeypatch.setattr(cli, "_live_client",
+                        lambda a: AnthropicClient(a.model, a.effort, client=FakeAnthropic(scripted_responder)))
+    cli.main(["sim", "--map", "ancmed", "--years", "1", "--press-rounds", "1", "--random", "CAR,EGY,GRE,PER",
+              "--seed", "1", "--out", str(tmp_path)])
+    s = json.loads(next(tmp_path.rglob("summary.json")).read_text())
+    assert s["map"] == "ancmed" and s["final_phase"] == "S0002M" and s["agents"]["ROME"] == "llm"
+
+
+def test_png_label_sizes_come_from_each_maps_css():
+    from diplo.viewer import _raster_safe, _render
+    std = _raster_safe(_render(new_game(), False))
+    anc = _raster_safe(_render(new_game("ancmed"), False))
+    assert 'id="CurrentPhase"' in std and 'font-size="40" fill="black" id="CurrentPhase"' in std   # 2.5em
+    assert 'font-size="18" fill="black" id="CurrentPhase"' in anc                                    # 18px
+    assert 'class="currentnoterect"' not in anc and 'fill="#c5dfea"' in anc

@@ -113,6 +113,7 @@ def aggregate(run_dir: Path) -> str:
     if not summaries:
         return f"No summary.json files found under {run_dir}\n"
     n = len(summaries)
+    POWERS = list(dict.fromkeys(p for s in summaries for p in s["centers"]))  # this run's map
     rows = []
     for p in POWERS:
         cs = [s["centers"].get(p, 0) for s in summaries]
@@ -182,7 +183,7 @@ def aggregate(run_dir: Path) -> str:
            f"supports given to another power's unit: {sum(a['ally_supports'] for a in act.values())}; "
            f"units dislodged: {sum(a['dislodged'] for a in act.values())}; "
            f"final center spread (max - min) per game: {spreads}."]
-    pt = promise_totals(claims)
+    pt = promise_totals(claims, POWERS)
     tcr = [timing_cost_replies(load_events(p)) for p in sorted(Path(run_dir).rglob("events.jsonl"))]
     years = sorted({y for t in tcr for y in t["cost_by_year"]})
     if years:

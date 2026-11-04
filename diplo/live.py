@@ -16,10 +16,9 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from diplomacy.engine.renderer import Renderer
 
 from .engine import POWERS, sc_counts
-from .viewer import CSS, POWER_COLORS
+from .viewer import CSS, _render, power_color
 
 MAX_MESSAGES = 200
 
@@ -64,8 +63,8 @@ class LiveBoard:
     # ------------------------------------------------------------------ runner hooks
     def phase_start(self, game, phase: str) -> None:
         status = "negotiating, then choosing orders" if game.phase_type == "M" else "choosing orders"
-        self._update(svg=Renderer(game).render(incl_orders=False), phase=phase, status=status,
-                     centers=sc_counts(game))
+        self._update(svg=_render(game, False) or "", phase=phase, status=status, centers=sc_counts(game),
+                     powers=list(game.powers), colors={p: power_color(p) for p in game.powers})
 
     def relations(self, texts: dict[str, str]) -> None:
         # a human player sees their own ledger; a spectator sees none (it is per-power)
@@ -83,7 +82,7 @@ class LiveBoard:
         self._update(messages=(msgs + [entry])[-MAX_MESSAGES:])
 
     def orders_set(self, game, phase: str) -> None:
-        self._update(svg=Renderer(game).render(incl_orders=True), status="orders revealed; adjudicating")
+        self._update(svg=_render(game, True) or "", status="orders revealed; adjudicating")
 
     def phase_end(self, game, phase: str) -> None:
         res = game.result_history[phase]
@@ -97,7 +96,7 @@ class LiveBoard:
             time.sleep(self.delay)
 
     def game_end(self, game, summary: dict) -> None:
-        self._update(svg=Renderer(game).render(incl_orders=False), phase=game.get_current_phase(),
+        self._update(svg=_render(game, False) or "", phase=game.get_current_phase(),
                      status="game over", centers=sc_counts(game))
 
     # ------------------------------------------------------------------ HTTP
@@ -153,8 +152,8 @@ PAGE = (
 <h3 id="msgtitle">Messages</h3><div id="msgs"></div>
 </div></div></section></main>
 <script>
-const COLORS = """ + json.dumps(POWER_COLORS) + """;
-const POWERS = """ + json.dumps(POWERS) + """;
+let COLORS = {};
+let POWERS = """ + json.dumps(POWERS) + """;
 let version = -1;
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dot = p => `<span class="dot" style="background:${COLORS[p]||'#999'}"></span>${esc(p[0] + p.slice(1).toLowerCase())}`;
@@ -166,6 +165,8 @@ async function poll() {
     if (s.version !== version) {
       version = s.version;
       if (s.title) document.getElementById('title').textContent = s.title;
+      if (s.powers) POWERS = s.powers;
+      if (s.colors) COLORS = s.colors;
       document.getElementById('phase').textContent = s.phase;
       document.getElementById('status').textContent = s.status;
       document.getElementById('board').src = '/board.svg?v=' + s.version;

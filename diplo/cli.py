@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 from .agents import HumanAgent, LLMAgent, RandomAgent
-from .engine import POWERS
+from .engine import map_powers, new_game, phase_year
 from .llm import (
     DEFAULT_CLAUDE_MODEL,
     AnthropicClient,
@@ -23,19 +23,20 @@ from .runner import GameRunner
 from .viewer import build_viewer
 
 # Options that define a game; saved in each recording so --replay can restore them.
-GAME_OPTIONS = ["model", "effort", "max_year", "press_rounds", "random", "silent", "max_cost"]
+GAME_OPTIONS = ["map", "model", "effort", "max_year", "press_rounds", "random", "silent", "max_cost"]
 
 
-def _powers(values) -> list[str]:
+def _powers(values, powers=None) -> list[str]:
+    powers = powers or map_powers("standard")
     out = []
     for v in values or []:
         for p in v.split(","):
             p = p.strip().upper()
             if not p:
                 continue
-            match = [q for q in POWERS if q.startswith(p)]
+            match = [q for q in powers if q.startswith(p)]
             if len(match) != 1:
-                sys.exit(f"unknown power {p!r}; choose from {', '.join(POWERS)}")
+                sys.exit(f"unknown power {p!r}; choose from {', '.join(powers)}")
             out.append(match[0])
     return out
 
@@ -47,9 +48,10 @@ def _live_client(args):
 def _play_one_game(args, gdir: Path, game_seed: int, human: str | None = None, replay=None):
     """Build agents and run one game. `replay` is (by_key, human_lines) or None."""
     gdir.mkdir(parents=True, exist_ok=True)
-    random_powers = set(_powers(args.random))
-    silent = set(_powers(args.silent))
-    needs_llm = any(p not in random_powers and p != human for p in POWERS)
+    powers = map_powers(args.map)
+    random_powers = set(_powers(args.random, powers))
+    silent = set(_powers(args.silent, powers))
+    needs_llm = any(p not in random_powers and p != human for p in powers)
     seed_rng = random.Random(game_seed)
 
     recorder = None
@@ -63,7 +65,7 @@ def _play_one_game(args, gdir: Path, game_seed: int, human: str | None = None, r
         llm = RecordingClient(_live_client(args), recorder)
 
     agents = {}
-    for p in POWERS:
+    for p in powers:
         if p == human:
             if replay is not None:
                 lines = iter(replay[1])
@@ -95,7 +97,7 @@ def _play_one_game(args, gdir: Path, game_seed: int, human: str | None = None, r
             board.viewer_power = human  # a human sees only their own messages
             board.title = f"{'Replay: ' if replay else ''}{'You are ' + human.title() if human else 'Agent-only game'}"
             board._update(title=board.title, viewer=human, messages=[], results=[])
-        s = GameRunner(agents, gdir, max_year=args.max_year, press_rounds=args.press_rounds,
+        s = GameRunner(agents, gdir, max_year=args.max_year, press_rounds=args.press_rounds, map_name=args.map,
                        llm=llm, config=config, observer=board, max_cost=args.max_cost).run()
     finally:
         if recorder:
@@ -130,7 +132,7 @@ def cmd_sim(args):
 def cmd_play(args):
     if args.replay:
         return _replay(args)
-    human = _powers([args.power])[0]
+    human = _powers([args.power], map_powers(args.map))[0]
     run_dir = Path(args.out) / time.strftime(f"play-{human.lower()}-%Y%m%d-%H%M%S")
     print(f"You are {human}. Log: {run_dir}")
     seed = args.seed if args.seed is not None else random.randrange(2**31)
@@ -219,11 +221,16 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def common(p):
+        p.add_argument("--map", default="standard",
+                       help="map from the diplomacy package, e.g. standard, ancmed (5 powers), modern (10), pure (7)")
+        p.add_argument("--years", type=int, default=5,
+                       help="game years to play, counted from the map's start year (default %(default)s)")
         p.add_argument("--model", default=DEFAULT_CLAUDE_MODEL,
                        help=f"Claude model ID (default {DEFAULT_CLAUDE_MODEL})")
         p.add_argument("--effort", default="medium", choices=["low", "medium", "high", "xhigh", "max"],
                        help="Claude effort level (default %(default)s)")
-        p.add_argument("--max-year", type=int, default=1905, help="stop after this game year (default %(default)s)")
+        p.add_argument("--max-year", type=int, default=None,
+                       help="stop after this game year (overrides --years; e.g. 1910 on the standard map)")
         p.add_argument("--press-rounds", type=int, default=2, help="negotiation rounds per movement phase")
         p.add_argument("--random", action="append", metavar="POWERS",
                        help="powers played by the random baseline instead of the LLM, e.g. --random ITA,TUR")
@@ -281,6 +288,12 @@ def main(argv=None):
     args = ap.parse_args(argv)
     if args.cmd == "play" and not args.power and not args.replay:
         ap.error("play needs --power (or --replay)")
+    if getattr(args, "years", None) is not None and getattr(args, "max_year", None) is None and not args.replay:
+        try:
+            start = phase_year(new_game(args.map).get_current_phase())
+        except Exception as e:  # unknown map name
+            sys.exit(f"cannot load map {args.map!r}: {e}")
+        args.max_year = start + args.years - 1
     board = None
     if getattr(args, "live", False):
         from .live import LiveBoard

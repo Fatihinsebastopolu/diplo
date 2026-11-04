@@ -81,21 +81,20 @@ class RandomAgent(Agent):
 
 # --------------------------------------------------------------------------- LLM
 
-SYSTEM_PROMPT = """You are an AI agent playing the board game Diplomacy (standard 1901 map, 7 powers) \
+SYSTEM_PROMPT = """You are an AI agent playing the board game Diplomacy ({map_desc}) \
 against other players, who may be humans or other agents. Each movement phase has a negotiation \
 period followed by simultaneous secret orders; the rules engine adjudicates them.
 
 How to play well:
-- You win by growing: 18 centers wins outright. Once the neutral centers are taken (usually by \
-the end of 1902), the only way to grow is to take centers from other powers. Every year, know \
+- You win by growing: {win} centers wins outright. Once the neutral centers are taken (usually \
+within the first two game years), the only way to grow is to take centers from other powers. Every year, know \
 where your next center will come from.
 - Use negotiation to make that happen. Find a partner with a common enemy and agree concrete \
 joint attacks: who moves where, who supports whom, and in which season. Non-aggression pacts \
 and demilitarized zones are worth making when they free your units to attack elsewhere, but \
 they are a means, not the goal: a power whose units only hold stagnates and gets picked apart.
 - The strongest alliances fight together: one power's unit supports another power's move, so \
-the attack beats a defender neither could beat alone. For example, you order "A TYR S A VEN - TRI" \
-so your ally's army in Venice takes Trieste with your support. When you agree a joint attack, put \
+the attack beats a defender neither could beat alone. {joint_example} When you agree a joint attack, put \
 both orders in proposed_orders (your support and your ally's move), say which season, and then \
 give exactly the support order you agreed.
 - Respond to what others actually said, remember what was promised, and judge other powers \
@@ -107,7 +106,8 @@ center that is actually threatened, or moving into position for next season. Hol
 that is genuinely the best use of the unit.
 - Keep messages short and in plain English, like a human player's in-game messages. Stay on \
 the topic of the game; do not insult or harass other players.
-- When you list proposed orders in a message, use exact order syntax, e.g. "A PAR - BUR", \
+- When you list proposed orders in a message, use exact order syntax (province codes vary by map; \
+use the ones in your legal orders), e.g. "A PAR - BUR", \
 "F BRE - MAO", "A MAR S A PAR - BUR", "F NTH C A LON - NWY", "A VIE H", "A PAR R PIC", \
 "A PAR B", "F STP/SC B", "A WAR D", "WAIVE".
 - When submitting orders you must choose only from the legal orders you are given. \
@@ -123,6 +123,20 @@ and break your word only when the gain is worth the lost trust.
 
 Your private_notes are a short memory that only you will see next phase: record \
 agreements, suspicions and plans."""
+
+def system_prompt(snap: PhaseSnapshot) -> str:
+    """The system prompt for this game's map. Constant within a game, so it caches well."""
+    if snap.map_name == "standard":
+        desc = "standard 1901 map, 7 powers"
+        example = ('For example, you order "A TYR S A VEN - TRI" so your ally\'s army in Venice takes '
+                   'Trieste with your support.')
+    else:
+        desc = f"the '{snap.map_name}' variant map, {snap.n_powers} powers"
+        example = ('For example, you order "A X S A Y - Z": your army in X supports your ally\'s army in Y '
+                   'into Z.')
+    return (SYSTEM_PROMPT.replace("{map_desc}", desc).replace("{win}", str(snap.win_centers))
+            .replace("{joint_example}", example))
+
 
 NEGOTIATE_SCHEMA_BASE = {
     "type": "object",
@@ -227,7 +241,7 @@ class LLMAgent(Agent):
             "Update your private notes."
         )
         schema = _negotiate_schema(others)
-        data = self.llm.json_call(SYSTEM_PROMPT, user, schema)
+        data = self.llm.json_call(system_prompt(snap), user, schema)
         self.notes = data.get("private_notes", self.notes)[:2000]
         msgs = [m for m in data.get("messages", []) if m.get("to") in others][:MAX_MESSAGES_PER_ROUND]
         bad = self._illegal_in(msgs, snap)
@@ -252,7 +266,7 @@ class LLMAgent(Agent):
             "proposed_orders or in the text, must be legal this phase."
         )
         try:
-            data2 = self.llm.json_call(SYSTEM_PROMPT, repair, schema)
+            data2 = self.llm.json_call(system_prompt(snap), repair, schema)
         except LLMError:
             data2 = {"messages": [m for i, m in enumerate(msgs) if i not in bad]}
         self.notes = data2.get("private_notes", self.notes)[:2000]
@@ -279,7 +293,7 @@ class LLMAgent(Agent):
             "order exactly from the legal list, and check that every unit has a job. "
             "Then update your private notes."
         )
-        data = self.llm.json_call(SYSTEM_PROMPT, user, ORDERS_SCHEMA)
+        data = self.llm.json_call(system_prompt(snap), user, ORDERS_SCHEMA)
         submitted = [normalize_order(o) for o in data.get("orders", [])]
         self.notes = data.get("private_notes", self.notes)[:2000]
         v = validate_orders(submitted, snap)
@@ -295,7 +309,7 @@ class LLMAgent(Agent):
             "Resubmit the complete set of orders, choosing only from the legal list."
         )
         try:
-            data2 = self.llm.json_call(SYSTEM_PROMPT, repair, ORDERS_SCHEMA)
+            data2 = self.llm.json_call(system_prompt(snap), repair, ORDERS_SCHEMA)
         except LLMError as e:
             return OrderOutcome(submitted, v.accepted, v.errors, v.errors, note=f"repair failed: {e}")
         resubmitted = [normalize_order(o) for o in data2.get("orders", [])]

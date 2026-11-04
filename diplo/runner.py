@@ -19,6 +19,7 @@ from .engine import (
     phase_year,
     sc_counts,
     snapshot,
+    win_centers,
 )
 from .llm import LLMError
 from .relations import Ledger
@@ -182,7 +183,8 @@ class GameRunner:
     # ------------------------------------------------------------------ main loop
     def run(self) -> dict:
         start = time.time()
-        self.log("game_start", config=self.config, max_year=self.max_year, press_rounds=self.press_rounds,
+        self.log("game_start", config=self.config, map=self.game.map.name, max_year=self.max_year,
+                 press_rounds=self.press_rounds,
                  agents={p: a.kind for p, a in self.agents.items()})
         g = self.game
         while not g.is_game_done:
@@ -238,11 +240,12 @@ class GameRunner:
     def _summary(self, seconds: float) -> dict:
         g = self.game
         centers = sc_counts(g)
-        winners = [p for p, n in centers.items() if n >= 18]
+        winners = [p for p, n in centers.items() if n >= win_centers(g)]
         top = max(centers.values())
         leaders = [p for p, n in centers.items() if n == top]
         return {
             "config": self.config,
+            "map": g.map.name,
             "final_phase": g.get_current_phase(),
             "phases_played": len(g.order_history),
             "solo_winner": winners[0] if winners else None,

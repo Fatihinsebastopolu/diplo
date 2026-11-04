@@ -72,6 +72,9 @@ python -m diplo play --power FRANCE --max-year 1903 --live
 # Watch a recorded game play out on the live board, 3 seconds per phase (no key needed)
 python -m diplo sim --replay results/claude-haiku-5-5-1903 --live --live-delay 3
 
+# A variant map: ancient Mediterranean, 5 powers, 3 game years from its start (year 1)
+python -m diplo sim --map ancmed --years 3
+
 # Free, offline baseline: every power plays random legal orders
 python -m diplo sim --random A,E,F,G,I,R,T --games 20 --max-year 1910
 
@@ -92,7 +95,9 @@ Common options (for both `sim` and `play`):
 | `--max-cost USD` | Stop a game once its estimated API cost reaches this amount. It's checked after each phase, so a game can overshoot by up to one phase's cost. |
 | `--live`, `--live-port`, `--live-delay` | Serve a live board at `http://localhost:8765` (or another port) while the game runs. `--live-delay` pauses after each phase so a replay can be watched. |
 | `--effort` | `low`, `medium` (the default), `high`, `xhigh` or `max`. Higher effort is slower and costs more. |
-| `--max-year` | The game stops after this year's winter adjustments (default 1905). It also stops early on an 18-center solo win. |
+| `--map` | A map from the `diplomacy` package: `standard` (the default), `ancmed` (5 powers), `modern` (10), `pure` (7 powers, 7 centers), `standard_france_austria` (2 players), and others. Maps without a drawing (e.g. `world`) still play, but have no board images. |
+| `--years` | Game years to play, counted from the map's own start year (default 5). Variants start in different years: `ancmed` in year 1, `modern` in 1994. |
+| `--max-year` | Stop after this year's winter adjustments, overriding `--years`. A game also stops early on a solo win, which means a majority of the map's centers (18 of 34 on the standard map). |
 | `--press-rounds` | Negotiation rounds per movement phase (default 2; 0 means no press). |
 | `--random POWERS` | Powers played by the random baseline instead of the LLM, e.g. `--random ITA,TUR`. |
 | `--silent POWERS` | LLM powers that read messages but never send any. |
@@ -235,8 +240,9 @@ characters). It also sees the last 40 messages it sent or received.
 - **No personality settings yet.** The truthfulness, aggressiveness and talkativeness
   settings proposed in Milestone 1 are not implemented. `--silent` is the only
   behaviour control.
-- **Standard map only.** The engine supports variant maps, but the CLI and the power
-  list are fixed to the standard seven powers.
+- **Variants: only the `diplomacy` package's maps.** There's no format yet for loading
+  a designer's own map. The abuse scenarios (`scenario`) are standard-map only, since
+  they assume France and Germany are neighbours.
 - **No time limits.** Negotiation is a fixed number of simultaneous rounds; there are
   no deadlines or real-time chat.
 - **Live board is view-only.** You still type messages and orders in the terminal. The

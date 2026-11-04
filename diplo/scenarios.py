@@ -179,7 +179,7 @@ class TrustProbe:
         me = self.agent.power
         snap = snapshot(game, me)
         snap.relations_text = self.runner.ledger.text_for(me)
-        others = [p for p in POWERS if p != me]
+        others = [p for p in game.powers if p != me]
         schema = {"type": "object", "properties": {p: {"type": "integer"} for p in others},
                   "required": others, "additionalProperties": False}
         user = (self.agent._context(snap, list(self.runner.press))

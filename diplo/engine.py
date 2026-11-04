@@ -22,6 +22,15 @@ def new_game(map_name: str = "standard") -> Game:
     return Game(map_name=map_name)
 
 
+def win_centers(game: Game) -> int:
+    """Centers needed for a solo win: a majority of the map's supply centers (18 of 34 on the standard map)."""
+    return len(game.map.scs) // 2 + 1
+
+
+def map_powers(map_name: str = "standard") -> list[str]:
+    return list(new_game(map_name).powers)
+
+
 def normalize_order(order: str) -> str:
     """Upper-case and collapse whitespace; map unicode dashes to '-'."""
     order = order.replace("–", "-").replace("—", "-").replace("->", "-")
@@ -56,6 +65,9 @@ class PhaseSnapshot:
     valid_locs: frozenset = field(default_factory=frozenset, repr=False)
     # Kept/broken promises, requests, attacks and joint attacks, as computed by the game.
     relations_text: str = ""
+    map_name: str = "standard"
+    win_centers: int = 18
+    n_powers: int = 7
 
 
 def alive_powers(game: Game) -> list[str]:
@@ -139,6 +151,9 @@ def snapshot(game: Game, power: str, all_orders: dict | None = None) -> PhaseSna
         units=units,
         all_legal_by_loc=all_orders,
         valid_locs=frozenset(l.upper() for l in game.map.locs),
+        map_name=game.map.name,
+        win_centers=win_centers(game),
+        n_powers=len(game.powers),
     )
 
 
