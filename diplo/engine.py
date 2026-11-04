@@ -74,6 +74,7 @@ class PhaseSnapshot:
     # Kept/broken promises, requests, attacks and joint attacks, as computed by the game.
     relations_text: str = ""
     map_name: str = "standard"
+    game_notes: list[str] = field(default_factory=list)  # public announcements, e.g. a substitution
     win_centers: int = 18
     n_powers: int = 7
 

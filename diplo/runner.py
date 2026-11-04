@@ -57,6 +57,7 @@ class GameRunner:
         self.stopped_reason = None
         self.press: list[Press] = []
         self.ledger = Ledger(list(self.game.powers))
+        self.game_notes: list[str] = []  # public announcements shown to every player
         self.events = open(self.out_dir / "events.jsonl", "w", encoding="utf-8")
         self.stats = {
             p: {
@@ -197,6 +198,7 @@ class GameRunner:
             snaps = {p: snapshot(g, p, all_orders) for p in alive}
             for p, s in snaps.items():
                 s.relations_text = self.ledger.text_for(p)
+                s.game_notes = list(self.game_notes)
             self._notify("relations", {p: s.relations_text for p, s in snaps.items()})
             units_at_start = {p: list(g.get_units(p)) for p in g.powers}
             center_owner = {c: p for p in g.powers for c in g.get_centers(p)}
@@ -223,6 +225,9 @@ class GameRunner:
                      results={str(u): [str(x) for x in rs] for u, rs in g.result_history[phase].items() if rs})
             if self.llm is not None:
                 self.log("usage", phase=phase, **self.llm.usage.to_dict())
+            notes = {p: a.notes for p, a in self.agents.items() if getattr(a, "notes", "")}
+            if notes:
+                self.log("agent_notes", phase=phase, notes=notes)  # lets a resumed game restore memories
             self._notify("phase_end", g, phase)
             if self.max_cost is not None and self.llm is not None and self.llm.usage.cost_usd >= self.max_cost:
                 self.stopped_reason = f"cost limit: est. ${self.llm.usage.cost_usd:.2f} >= ${self.max_cost:.2f}"

@@ -610,3 +610,43 @@ def test_custom_map_file_example(tmp_path, monkeypatch):
     s = json.loads(next(tmp_path.rglob("summary.json")).read_text())
     assert s["final_phase"] == "S1902M" and s["map"].endswith("turkey_fleet_smyrna.map")
     assert list(tmp_path.rglob("maps/*.svg"))  # inherits the standard drawing
+
+
+# ----------------------------------------------------------------- mid-game substitution
+
+def test_resume_with_substitute_and_replay(tmp_path, monkeypatch):
+    prompts = []
+
+    def responder(kw):
+        prompts.append(kw["messages"][0]["content"])
+        out = scripted_responder(kw)
+        out["private_notes"] = "notes of " + kw["messages"][0]["content"].split(".")[0].split()[-1]
+        return out
+
+    monkeypatch.setattr(cli, "_live_client",
+                        lambda a: AnthropicClient(a.model, a.effort, client=FakeAnthropic(responder)))
+    cli.main(["sim", "--max-year", "1902", "--press-rounds", "1", "--seed", "1", "--out", str(tmp_path / "orig")])
+    game_dir = next((tmp_path / "orig").iterdir()) / "game-001"
+    prompts.clear()
+    cli.main(["resume", str(game_dir), "--at", "S1902M", "--substitute", "FRA", "--years", "1",
+              "--out", str(tmp_path / "res")])
+    rdir = next((tmp_path / "res").iterdir())
+    ev = load_events(rdir / "events.jsonl")
+    res = next(e for e in ev if e["event"] == "resume")
+    assert res["substitute"] == "FRANCE" and res["announce"] and res["handover_chars"] > 100
+    assert "GERMANY" in res["restored_notes_for"]
+    first = [p for p in prompts if "Current phase: S1902M" in p]
+    fra = [p for p in first if p.startswith("You are FRANCE")]
+    ger = [p for p in first if p.startswith("You are GERMANY")]
+    assert fra and "## Handover: you have taken over FRANCE" in fra[0] and "Playing profile" in fra[0]
+    assert "## Your private notes from earlier\n(none)" in fra[0]
+    assert ger and "notes of GERMANY" in ger[0] and "FRANCE is now played by a substitute" in ger[0]
+    s = json.loads((rdir / "summary.json").read_text())
+    assert s["final_phase"] == "S1903M"
+    views, _, _ = rebuild(ev, render=False)            # the viewer sees the whole game
+    assert views[0].phase == "S1901M" and views[-1].phase == "W1902A" or views[-1].phase.startswith("F1902")
+    # the resumed game replays with no API
+    monkeypatch.setattr(cli, "_live_client", None)
+    cli.main(["sim", "--replay", str(rdir), "--out", str(tmp_path / "rep")])
+    rep = json.loads(next((tmp_path / "rep").rglob("summary.json")).read_text())
+    assert rep["centers"] == s["centers"] and rep["final_phase"] == s["final_phase"]

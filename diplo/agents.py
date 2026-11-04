@@ -210,6 +210,7 @@ class LLMAgent(Agent):
         self.llm = llm
         self.negotiates = negotiates
         self.notes = ""
+        self.handover = ""  # set when this agent substitutes for a player who left
 
     def _context(self, snap: PhaseSnapshot, press: list[Press]) -> str:
         return (
@@ -218,7 +219,10 @@ class LLMAgent(Agent):
             f"## Recent results\n{snap.recent_results_text}\n\n"
             f"## Relationships (computed by the game from messages and actual orders)\n"
             f"{snap.relations_text or 'No promises, requests or clashes recorded yet.'}\n\n"
-            f"## Your private notes from earlier\n{self.notes or '(none)'}\n\n"
+            + (("## Game notes\n" + "\n".join(f"- {n}" for n in snap.game_notes) + "\n\n") if snap.game_notes else "")
+            + (f"## Handover: you have taken over {self.power} from the previous player\n{self.handover}\n\n"
+               if self.handover else "")
+            + f"## Your private notes from earlier\n{self.notes or '(none)'}\n\n"
             f"## Messages involving you (most recent last)\n{format_press(press, self.power)}\n"
         )
 
@@ -346,6 +350,9 @@ class HumanAgent(Agent):
             self.print(f"  << {m.sender}: {m.text}{prop}")
 
     def _show_relations(self, snap):
+        if self._relations_shown != snap.phase:
+            for n in snap.game_notes:
+                self.print(f"[game note] {n}")
         if snap.relations_text and self._relations_shown != snap.phase:
             self._relations_shown = snap.phase
             self.print("Relationships (computed by the game: what each power said vs what it did):")

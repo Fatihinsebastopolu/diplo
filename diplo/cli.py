@@ -157,6 +157,12 @@ def _replay(args):
             setattr(args, k, meta.get(k, getattr(args, k, None)))
         gdir = run_dir / f"game-{i + 1:03d}"
         print(f"[diplo] replaying {f} -> {gdir} (no API calls)")
+        if meta.get("resume"):
+            r = meta["resume"]
+            s, _ = _resume_game(args, f.parent / r["source"], r["at"], r["substitute"], r["announce"], gdir,
+                                ReplayClient(args.model, by_key))
+            _print_result(s)
+            continue
         _print_result(_play_one_game(args, gdir, meta["game_seed"], human=meta.get("human"),
                                      replay=(by_key, human_lines)))
     report = aggregate(run_dir)
@@ -192,6 +198,87 @@ def cmd_scenario(args):
     (run_dir / "report.md").write_text(md)
     print(md)
     print(f"[diplo] wrote {run_dir}/report.md")
+
+
+def _resume_game(args, source: Path, at: str, sub: str, announce: bool, gdir: Path, llm, recorder=None):
+    """Continue the game logged at `source` from phase `at`, with a substitute agent for `sub`."""
+    import json
+    import shutil
+
+    from .handover import handover_text, load_events as load_ev, restore
+
+    gdir.mkdir(parents=True, exist_ok=True)
+    events = load_ev(source)
+    src_copy = gdir / "resume_source.jsonl"
+    if source.resolve() != src_copy.resolve():
+        shutil.copyfile(source, src_copy)  # makes the resumed game replayable on its own
+    start = next(e for e in events if e["event"] == "game_start")
+    game, press, ledger, notes, views, prefix = restore(events, at)
+    powers = list(game.powers)
+    sub = _powers([sub], powers)[0]
+    kinds = start.get("agents", {})
+    agents = {}
+    for i, p in enumerate(powers):
+        if kinds.get(p) == "random":
+            agents[p] = RandomAgent(p, random.Random(i))
+        else:  # LLM and human seats continue as LLM agents
+            agents[p] = LLMAgent(p, llm)
+            if p != sub:
+                agents[p].notes = notes.get(p, "")
+    handover = handover_text(sub, at, views, ledger, announce)
+    agents[sub].handover = handover
+    config = {k: getattr(args, k, None) for k in GAME_OPTIONS}
+    config.update(resumed_from=str(source), at=at, substitute=sub, announce=announce)
+    runner = GameRunner(agents, gdir, max_year=args.max_year, press_rounds=args.press_rounds,
+                        map_name=args.map, llm=llm, config=config, max_cost=args.max_cost)
+    runner.game, runner.press, runner.ledger = game, press, ledger
+    if announce:
+        runner.game_notes = [f"{sub} is now played by a substitute player, from {at} on."]
+    for e in prefix:
+        runner.events.write(json.dumps(e) + "\n")
+    restored = sorted(p for p in powers if p != sub and agents[p].kind == "llm" and notes.get(p))
+    runner.log("resume", source=str(source), at=at, substitute=sub, announce=announce,
+               handover_chars=len(handover), restored_notes_for=restored)
+    if not notes:
+        print("[diplo]   note: this log has no saved agent notes (made before notes were logged); "
+              "the other agents start with empty notes")
+    s = runner.run()
+    (gdir / "transcript.md").write_text(transcript(gdir / "events.jsonl"))
+    print(f"[diplo]   viewer: {build_viewer(gdir)}")
+    return s, handover
+
+
+def cmd_resume(args):
+    from .handover import load_events as load_ev
+
+    src = Path(args.game)
+    source = src / "events.jsonl" if src.is_dir() else src
+    events = load_ev(source)
+    start = next(e for e in events if e["event"] == "game_start")
+    cfg = start.get("config", {})
+    args.map = start.get("map") or cfg.get("map") or "standard"
+    if args.press_rounds is None:
+        args.press_rounds = start.get("press_rounds", 2)
+    if args.max_year is None:
+        args.max_year = (int(args.at[1:5]) + args.years - 1) if args.years else start.get("max_year")
+    announce = not args.no_announce
+    gdir = Path(args.out) / time.strftime(f"resume-{args.substitute.lower()}-%Y%m%d-%H%M%S")
+    gdir.mkdir(parents=True, exist_ok=True)
+    meta = {k: getattr(args, k, None) for k in GAME_OPTIONS}
+    meta.update(game_seed=0, human=None,
+                resume={"source": "resume_source.jsonl", "at": args.at, "substitute": args.substitute,
+                        "announce": announce})
+    recorder = Recorder(gdir / "recording.jsonl", meta)
+    llm = RecordingClient(_live_client(args), recorder)
+    try:
+        s, handover = _resume_game(args, source, args.at, args.substitute, announce, gdir, llm)
+    finally:
+        recorder.close()
+    print("\n--- handover given to the substitute ---\n" + handover + "\n---")
+    _print_result(s)
+    report = aggregate(gdir)
+    (gdir / "report.md").write_text(report)
+    print(f"[diplo] wrote {gdir}/report.md")
 
 
 def cmd_show(args):
@@ -273,6 +360,22 @@ def main(argv=None):
     p.add_argument("--out", default="runs")
     p.set_defaults(fn=cmd_scenario)
 
+    p = sub.add_parser("resume", help="continue a logged game from a phase, with a substitute for one power")
+    p.add_argument("game", help="a game directory (or its events.jsonl)")
+    p.add_argument("--at", required=True, help="the phase the substitute starts in, e.g. S1903M")
+    p.add_argument("--substitute", required=True, help="the power whose player left, e.g. FRANCE")
+    p.add_argument("--no-announce", action="store_true", help="don't tell the other players about the substitution")
+    p.add_argument("--years", type=int, default=None, help="game years to play from --at (default: the original end)")
+    p.add_argument("--max-year", type=int, default=None)
+    p.add_argument("--press-rounds", type=int, default=None, help="default: as in the original game")
+    p.add_argument("--model", default=DEFAULT_CLAUDE_MODEL)
+    p.add_argument("--effort", default="medium", choices=["low", "medium", "high", "xhigh", "max"])
+    p.add_argument("--max-cost", type=float, default=None, metavar="USD")
+    p.add_argument("--random", default=None, help=argparse.SUPPRESS)
+    p.add_argument("--silent", default=None, help=argparse.SUPPRESS)
+    p.add_argument("--out", default="runs")
+    p.set_defaults(fn=cmd_resume, replay=None)
+
     p = sub.add_parser("show", help="print a markdown transcript of a game log")
     p.add_argument("events", help="path to a game's events.jsonl")
     p.set_defaults(fn=cmd_show)
@@ -288,7 +391,8 @@ def main(argv=None):
     args = ap.parse_args(argv)
     if args.cmd == "play" and not args.power and not args.replay:
         ap.error("play needs --power (or --replay)")
-    if getattr(args, "years", None) is not None and getattr(args, "max_year", None) is None and not args.replay:
+    if (args.cmd != "resume" and getattr(args, "years", None) is not None
+            and getattr(args, "max_year", None) is None and not args.replay):
         try:
             start = phase_year(new_game(args.map).get_current_phase())
         except Exception as e:  # unknown map name

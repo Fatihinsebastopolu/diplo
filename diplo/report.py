@@ -68,6 +68,8 @@ def timing_cost_replies(events: list[dict]) -> dict:
     """
     phase_cost, prev = {}, 0.0
     for e in events:
+        if e["event"] == "game_start":
+            prev = 0.0  # a resumed game's log starts a new usage count after the copied prefix
         if e["event"] == "usage":
             phase_cost[e["phase"]] = e["cost_usd"] - prev
             prev = e["cost_usd"]
@@ -79,6 +81,8 @@ def timing_cost_replies(events: list[dict]) -> dict:
     # wall time per phase from event timestamps (works for logs made before timing events existed)
     phase_secs, last_t = {}, next((e["t"] for e in events if e["event"] == "game_start"), None)
     for e in events:
+        if e["event"] == "game_start":
+            last_t = e["t"]
         if e["event"] == "phase_result" and last_t is not None:
             phase_secs[e["phase"]] = e["t"] - last_t
             last_t = e["t"]
