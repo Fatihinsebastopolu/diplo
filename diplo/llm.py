@@ -258,6 +258,9 @@ class ReplayClient(LLMClient):
         with self._lock:
             queue = self.by_key.get(key)
             if not queue:
+                key = self._growth_order_key(system, user, schema)
+                queue = self.by_key.get(key) if key else None
+            if not queue:
                 raise ReplayMiss(
                     "The replayed game diverged from the recording (a prompt was never recorded). "
                     "Use the same diplo version and options that made the recording."
@@ -270,3 +273,27 @@ class ReplayClient(LLMClient):
         t = rec["tokens"]
         self.usage.add_tokens(self.model, t["input"], t["output"], t["cache_read"], t["cache_write"])
         return rec["data"]
+
+    def _growth_order_key(self, system, user, schema) -> str | None:
+        """Compatibility for recordings made before the Growth section's line order was made deterministic
+        (3 Nov 2026): the same lines could appear in a different order in another Python process. Try the
+        other orders of those lines and return the first recorded key, if any."""
+        import itertools
+
+        head = "## Growth (computed by the game)\n"
+        i = user.find(head)
+        if i < 0:
+            return None
+        j = user.find("\n\n", i)
+        lines = user[i + len(head):j].split("\n")
+        rows = [k for k, line in enumerate(lines) if line.startswith("- ")]
+        if len(rows) < 2:
+            return None
+        for perm in itertools.permutations([lines[k] for k in rows]):
+            new = list(lines)
+            for k, line in zip(rows, perm):
+                new[k] = line
+            key = request_key(self.model, system, user[:i + len(head)] + "\n".join(new) + user[j:], schema)
+            if self.by_key.get(key):
+                return key
+        return None

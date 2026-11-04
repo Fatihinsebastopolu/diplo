@@ -751,3 +751,29 @@ def test_live_page_runs_in_a_real_browser():
     assert 'data-conn="live"' in out, "the page script did not run or could not fetch /state"
     assert 'data-board="loaded"' in out, "the board image did not load"
     assert "ENGLAND: kept 1 of 1 promises to you.<br>GERMANY" in out
+
+
+def test_growth_note_is_identical_in_every_process():
+    """Prompts must not depend on Python's per-process hash seed, or recorded games stop replaying."""
+    import subprocess, sys
+    code = ("from diplo.engine import new_game, growth_text\n"
+            "g = new_game()\n"
+            "g.set_orders('AUSTRIA', ['A VIE - GAL', 'A BUD - SER', 'F TRI - ALB'])\n"
+            "g.set_orders('RUSSIA', ['F SEV - RUM']); g.set_orders('TURKEY', ['A CON - BUL'])\n"
+            "g.process()\n"
+            "print(''.join(growth_text(g, p) for p in g.powers))")
+    outs = {subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True,
+                           env={**__import__('os').environ, "PYTHONHASHSEED": str(s)}).stdout
+            for s in range(6)}
+    assert len(outs) == 1
+
+
+def test_replay_accepts_growth_lines_recorded_in_another_order():
+    from diplo.llm import request_key
+    old = "## Growth (computed by the game)\nYou have 3 centers.\nCenters:\n- RUM (a)\n- BUL (b)\n\n## Next"
+    new = "## Growth (computed by the game)\nYou have 3 centers.\nCenters:\n- BUL (b)\n- RUM (a)\n\n## Next"
+    rec = {"data": {"ok": 1}, "error": None, "tokens": {"input": 1, "output": 1, "cache_read": 0, "cache_write": 0}}
+    rc = ReplayClient("claude-haiku-5-5", {request_key("claude-haiku-5-5", "sys", old, {}): [rec]})
+    assert rc.json_call("sys", new, {}) == {"ok": 1}
+    with pytest.raises(ReplayMiss):
+        rc.json_call("sys", new.replace("BUL (b)", "SMY (c)"), {})

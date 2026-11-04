@@ -140,7 +140,7 @@ python -m diplo sim --max-year 1903
 python -m diplo play --power FRANCE --max-year 1903 --live
 
 # Watch a recorded game play out on the live board, 3 seconds per phase (no key needed)
-python -m diplo sim --replay results/claude-haiku-5-5-1903 --live --live-delay 3
+python -m diplo sim --replay results/claude-sonnet-5-5-1910 --live --live-delay 3
 
 # A variant map: ancient Mediterranean, 5 powers, 3 game years from its start (year 1)
 python -m diplo sim --map ancmed --years 3
@@ -251,12 +251,34 @@ viewer existed.
 
 ## Recorded results
 
-`results/` holds a recorded game. Open its `game.html` in a browser, or replay it with
-`python -m diplo sim --replay results/claude-haiku-5-5-1903`; no key is needed.
+`results/` holds recorded full games (1901–1910, all with 2 negotiation rounds per movement
+phase). Open a game's `game.html` in a browser, or replay it with, for example,
+`python -m diplo sim --replay results/claude-sonnet-5-5-1910`; no key is needed. Per-phase
+map images are not committed; `python -m diplo view results/<dir>` regenerates them.
 
-| Directory | Agents | Length | Result |
-|---|---|---|---|
-| `claude-haiku-5-5-1903` | All 7 powers on `claude-haiku-5-5`, effort medium, 2 negotiation rounds | 1901–1903, 165 s | 136 API calls, est. $0.135. 0/186 illegal orders, 0/427 illegal proposals, 223 messages. 94% of own-unit proposals carried out; 8 cases of different plans told to different powers. |
+| Directory | Agents | Result |
+|---|---|---|
+| `claude-haiku-5-5-1910` | All 7 powers on Haiku 5.5, effort medium | Est. **$0.66**, 456 API calls, 848 s. 0/673 illegal orders, 0/1,497 illegal proposals. 21% of unit-orders moved, supported or convoyed; 9 units dislodged; nobody eliminated; final centers 4–6. |
+| `claude-sonnet-5-5-1910` | All 7 powers on Sonnet 5.5, effort medium | Est. **$8.47**, 479 API calls, 432 s. 0/720 illegal orders reached the engine (4 repaired), 0/1,177 illegal proposals. 49% of unit-orders moved, supported or convoyed; 39 units dislodged; Austria and Germany eliminated; France 10, Russia 9 centers. |
+| `haiku-low-negotiating-1910` | All 7 powers on Haiku 5.5, effort low | Est. **$0.48**, 469 API calls, 551 s, 618 messages. 0 illegal orders or proposals. |
+| `haiku-low-silent-france-1910` | Same, but France never writes messages (`--silent FRANCE`); it still reads them and gives orders | Est. **$0.42**, 415 API calls, 482 s, 508 messages. 0 illegal orders or proposals. |
+
+**Negotiating agents vs one order-only agent** (the last two rows, one game each). Taking
+negotiation away from one of seven seats saved $0.06 per game (13%) and 54 API calls.
+The silent France ended with the same 5 centers as the negotiating France, but it was
+attacked 10 times instead of 3, and replies to messages fell from 86% to 72% overall,
+because the 71 messages sent to France got no answer. The other powers kept writing to it
+all game. One game per condition says nothing reliable about outcomes; it does give the
+cost of negotiation per seat.
+
+**Haiku vs Sonnet.** Sonnet costs about 13 times as much per game and plays a far more
+active, decisive game. Both kept every illegal order away from the adjudicator. Sonnet
+was also faster in wall time, though the two games ran at the same time.
+
+`claude-haiku-5-5-1903` and `claude-sonnet-5-5-1903` are earlier three-year games recorded
+before the prompt changes (joint attacks, relationship ledger, growth note). Their prompts
+no longer match the current code, so they replay only at the commits that recorded them
+(`84c1e4e` and `0742543`).
 
 An earlier version had an optional backend for local open-weight models through Ollama.
 It was tested with `qwen3:4b` on a CPU: one game year took 318 s, and the model reused
@@ -305,9 +327,13 @@ characters). It also sees the last 40 messages it sent or received.
 
 ## Current limitations
 
-- **Measured on only one short game so far.** The recorded Haiku game (1901–1903) is
-  the only real-API run. Its cost, legality and promise figures are examples, not
-  statistics. The test suite uses a fake Claude client.
+- **Few games so far.** The recorded results are single full games per setting, so
+  their cost, legality and promise figures are examples, not statistics. Comparisons
+  of outcomes (who wins, how negotiation changes results) need batches of games. The
+  test suite uses a fake Claude client.
+- **Haiku plays cautiously.** Without the growth note it froze into an all-hold draw
+  from 1903. With it, Haiku attacks more but rarely follows through on joint supports,
+  and games still end close to even. Sonnet plays decisively at about 13 times the cost.
 - **Cost figures are estimates.** They come from token counts and list prices in
   `diplo/llm.py`. If a refusal fallback runs on another model, the cost is still
   priced at the requested model's rate.

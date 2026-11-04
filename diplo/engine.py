@@ -214,7 +214,7 @@ def growth_text(game: Game, power: str, all_orders: dict | None = None) -> str:
     targets = {}
     for u in mine:
         loc = u.split()[1]
-        for o in all_orders.get(loc, []):
+        for o in sorted(all_orders.get(loc, [])):  # the engine's order comes from a set: sort for stable prompts
             parts = o.split()
             if len(parts) == 4 and parts[2] == "-":
                 dest = parts[3].split("/")[0]
@@ -257,7 +257,9 @@ def growth_text(game: Game, power: str, all_orders: dict | None = None) -> str:
         if other:
             r += "; a partner could support it: " + ", ".join(other)
         rows.append(((not occ), len(own) > hold, len(own) + 0.5 * len(other) - hold, r))
-    rows = [x[-1] for x in sorted(rows, key=lambda x: x[:3], reverse=True)][:MAX_TARGETS]
+    # rank by (empty center, enough own support, support margin); break ties by text so the prompt is the same
+    # in every process (needed for exact replay)
+    rows = [x[-1] for x in sorted(rows, key=lambda x: (-x[0], -x[1], -x[2], x[3]))][:MAX_TARGETS]
     if not rows:
         return lead
     return (lead + "\nCenters you could attack this phase (legal moves; to dislodge a defender, your supports "

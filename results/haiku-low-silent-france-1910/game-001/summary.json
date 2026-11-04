@@ -1,0 +1,158 @@
+{
+  "config": {
+    "map": "standard",
+    "model": "claude-haiku-5-5",
+    "effort": "low",
+    "max_year": 1910,
+    "press_rounds": 2,
+    "random": null,
+    "silent": [
+      "FRANCE"
+    ],
+    "max_cost": 1.5,
+    "game_seed": 1595666615,
+    "human": null,
+    "replayed": false
+  },
+  "map": "standard",
+  "final_phase": "S1911M",
+  "phases_played": 32,
+  "solo_winner": null,
+  "leaders": [
+    "RUSSIA"
+  ],
+  "centers": {
+    "AUSTRIA": 0,
+    "ENGLAND": 3,
+    "FRANCE": 5,
+    "GERMANY": 7,
+    "ITALY": 4,
+    "RUSSIA": 8,
+    "TURKEY": 7
+  },
+  "eliminated": [
+    "AUSTRIA"
+  ],
+  "agents": {
+    "AUSTRIA": "llm",
+    "ENGLAND": "llm",
+    "FRANCE": "llm",
+    "GERMANY": "llm",
+    "ITALY": "llm",
+    "RUSSIA": "llm",
+    "TURKEY": "llm"
+  },
+  "stats": {
+    "AUSTRIA": {
+      "messages_sent": 84,
+      "proposals": 167,
+      "illegal_proposals": 0,
+      "illegal_proposals_first_pass": 1,
+      "proposal_repairs_succeeded": 1,
+      "messages_dropped": 0,
+      "orders_submitted": 70,
+      "orders_accepted": 70,
+      "illegal_first_pass": 0,
+      "repairs_succeeded": 0,
+      "illegal_final": 0,
+      "agent_failures": 0
+    },
+    "ENGLAND": {
+      "messages_sent": 84,
+      "proposals": 128,
+      "illegal_proposals": 0,
+      "illegal_proposals_first_pass": 1,
+      "proposal_repairs_succeeded": 1,
+      "messages_dropped": 0,
+      "orders_submitted": 67,
+      "orders_accepted": 67,
+      "illegal_first_pass": 0,
+      "repairs_succeeded": 0,
+      "illegal_final": 0,
+      "agent_failures": 0
+    },
+    "FRANCE": {
+      "messages_sent": 0,
+      "proposals": 0,
+      "illegal_proposals": 0,
+      "illegal_proposals_first_pass": 0,
+      "proposal_repairs_succeeded": 0,
+      "messages_dropped": 0,
+      "orders_submitted": 97,
+      "orders_accepted": 97,
+      "illegal_first_pass": 0,
+      "repairs_succeeded": 0,
+      "illegal_final": 0,
+      "agent_failures": 0
+    },
+    "GERMANY": {
+      "messages_sent": 82,
+      "proposals": 125,
+      "illegal_proposals": 0,
+      "illegal_proposals_first_pass": 7,
+      "proposal_repairs_succeeded": 5,
+      "messages_dropped": 1,
+      "orders_submitted": 111,
+      "orders_accepted": 111,
+      "illegal_first_pass": 0,
+      "repairs_succeeded": 0,
+      "illegal_final": 0,
+      "agent_failures": 0
+    },
+    "ITALY": {
+      "messages_sent": 95,
+      "proposals": 108,
+      "illegal_proposals": 0,
+      "illegal_proposals_first_pass": 1,
+      "proposal_repairs_succeeded": 1,
+      "messages_dropped": 0,
+      "orders_submitted": 79,
+      "orders_accepted": 79,
+      "illegal_first_pass": 0,
+      "repairs_succeeded": 0,
+      "illegal_final": 0,
+      "agent_failures": 0
+    },
+    "RUSSIA": {
+      "messages_sent": 80,
+      "proposals": 145,
+      "illegal_proposals": 0,
+      "illegal_proposals_first_pass": 1,
+      "proposal_repairs_succeeded": 1,
+      "messages_dropped": 0,
+      "orders_submitted": 120,
+      "orders_accepted": 120,
+      "illegal_first_pass": 0,
+      "repairs_succeeded": 0,
+      "illegal_final": 0,
+      "agent_failures": 0
+    },
+    "TURKEY": {
+      "messages_sent": 83,
+      "proposals": 172,
+      "illegal_proposals": 0,
+      "illegal_proposals_first_pass": 4,
+      "proposal_repairs_succeeded": 3,
+      "messages_dropped": 0,
+      "orders_submitted": 91,
+      "orders_accepted": 91,
+      "illegal_first_pass": 0,
+      "repairs_succeeded": 0,
+      "illegal_final": 0,
+      "agent_failures": 0
+    }
+  },
+  "usage": {
+    "calls": 415,
+    "input_tokens": 2745064,
+    "output_tokens": 272363,
+    "cache_read_tokens": 592014,
+    "cache_write_tokens": 18764,
+    "refusals": 0,
+    "api_errors": 0,
+    "max_tokens_retries": 0,
+    "cost_usd": 0.419
+  },
+  "wall_seconds": 482.2,
+  "stopped_reason": null
+}
