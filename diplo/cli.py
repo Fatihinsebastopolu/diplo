@@ -201,7 +201,7 @@ def cmd_scenario(args):
 
 
 def _resume_game(args, source: Path, at: str, sub: str, announce: bool, gdir: Path, llm, recorder=None):
-    """Continue the game logged at `source` from phase `at`, with a substitute agent for `sub`."""
+    """Continue the game logged at `source` from phase `at`, with a substitute agent for `sub` (or none)."""
     import json
     import shutil
 
@@ -215,7 +215,7 @@ def _resume_game(args, source: Path, at: str, sub: str, announce: bool, gdir: Pa
     start = next(e for e in events if e["event"] == "game_start")
     game, press, ledger, notes, views, prefix = restore(events, at)
     powers = list(game.powers)
-    sub = _powers([sub], powers)[0]
+    sub = _powers([sub], powers)[0] if sub else None
     kinds = start.get("agents", {})
     agents = {}
     for i, p in enumerate(powers):
@@ -225,14 +225,15 @@ def _resume_game(args, source: Path, at: str, sub: str, announce: bool, gdir: Pa
             agents[p] = LLMAgent(p, llm)
             if p != sub:
                 agents[p].notes = notes.get(p, "")
-    handover = handover_text(sub, at, views, ledger, announce)
-    agents[sub].handover = handover
+    handover = handover_text(sub, at, views, ledger, announce) if sub else ""
+    if sub:
+        agents[sub].handover = handover
     config = {k: getattr(args, k, None) for k in GAME_OPTIONS}
     config.update(resumed_from=str(source), at=at, substitute=sub, announce=announce)
     runner = GameRunner(agents, gdir, max_year=args.max_year, press_rounds=args.press_rounds,
                         map_name=args.map, llm=llm, config=config, max_cost=args.max_cost)
     runner.game, runner.press, runner.ledger = game, press, ledger
-    if announce:
+    if announce and sub:
         runner.game_notes = [f"{sub} is now played by a substitute player, from {at} on."]
     for e in prefix:
         runner.events.write(json.dumps(e) + "\n")
@@ -262,7 +263,7 @@ def cmd_resume(args):
     if args.max_year is None:
         args.max_year = (int(args.at[1:5]) + args.years - 1) if args.years else start.get("max_year")
     announce = not args.no_announce
-    gdir = Path(args.out) / time.strftime(f"resume-{args.substitute.lower()}-%Y%m%d-%H%M%S")
+    gdir = Path(args.out) / time.strftime(f"resume-{(args.substitute or 'all').lower()}-%Y%m%d-%H%M%S")
     gdir.mkdir(parents=True, exist_ok=True)
     meta = {k: getattr(args, k, None) for k in GAME_OPTIONS}
     meta.update(game_seed=0, human=None,
@@ -274,7 +275,8 @@ def cmd_resume(args):
         s, handover = _resume_game(args, source, args.at, args.substitute, announce, gdir, llm)
     finally:
         recorder.close()
-    print("\n--- handover given to the substitute ---\n" + handover + "\n---")
+    if handover:
+        print("\n--- handover given to the substitute ---\n" + handover + "\n---")
     _print_result(s)
     report = aggregate(gdir)
     (gdir / "report.md").write_text(report)
@@ -360,10 +362,11 @@ def main(argv=None):
     p.add_argument("--out", default="runs")
     p.set_defaults(fn=cmd_scenario)
 
-    p = sub.add_parser("resume", help="continue a logged game from a phase, with a substitute for one power")
+    p = sub.add_parser("resume", help="continue a logged game from a phase, optionally with a substitute for one power")
     p.add_argument("game", help="a game directory (or its events.jsonl)")
     p.add_argument("--at", required=True, help="the phase the substitute starts in, e.g. S1903M")
-    p.add_argument("--substitute", required=True, help="the power whose player left, e.g. FRANCE")
+    p.add_argument("--substitute", default=None,
+                   help="the power whose player left, e.g. FRANCE (omit to continue with every agent as before)")
     p.add_argument("--no-announce", action="store_true", help="don't tell the other players about the substitution")
     p.add_argument("--years", type=int, default=None, help="game years to play from --at (default: the original end)")
     p.add_argument("--max-year", type=int, default=None)

@@ -193,6 +193,10 @@ def aggregate(run_dir: Path) -> str:
     resumes = [(e, ev) for p in sorted(Path(run_dir).rglob("events.jsonl")) for ev in [load_events(p)]
                for e in ev if e["event"] == "resume"]
     for r, ev in resumes:
+        if not r.get("substitute"):
+            md += ["", "## Resumed game", "", f"- Continued from {r['at']} with every agent's notes restored "
+                   f"({', '.join(r['restored_notes_for']) or 'none'}); no substitution."]
+            continue
         md += ["", "## Substitution", "",
                f"- {r['substitute']} was taken over by a substitute agent from {r['at']} "
                f"({'announced to the other players' if r['announce'] else 'not announced'}).",

@@ -65,6 +65,8 @@ class FakeAnthropic:
         stop = "end_turn"
         if out == "REFUSE":
             stop, out = "refusal", {}
+        elif out == "TRUNCATE":
+            stop, out = "max_tokens", {}
         return SimpleNamespace(
             stop_reason=stop,
             content=[SimpleNamespace(type="text", text=json.dumps(out))],
@@ -656,3 +658,41 @@ def test_resume_with_substitute_and_replay(tmp_path, monkeypatch):
     assert cmp["before"]["movement_phases"] == 2 and cmp["after"]["movement_phases"] == 2
     assert cmp["after"]["centers_start"] == cmp["before"]["centers_end"]
     assert "Fairness check: FRANCE" in aggregate(rdir)
+
+
+def test_max_tokens_retries_once_with_more_room():
+    calls = []
+
+    def responder(kw):
+        calls.append(kw["max_tokens"])
+        return "TRUNCATE" if len(calls) == 1 else {"orders": [], "private_notes": ""}
+
+    llm = AnthropicClient("claude-haiku-5-5", client=FakeAnthropic(responder))
+    llm.json_call("sys", "user", {"type": "object"})
+    assert calls == [16000, 32000] and llm.usage.max_tokens_retries == 1 and llm.usage.calls == 2
+    with pytest.raises(LLMError):  # a second truncation at the cap is an error
+        AnthropicClient("claude-haiku-5-5", client=FakeAnthropic(lambda kw: "TRUNCATE")).json_call("s", "u", {})
+
+
+def test_growth_note_lists_reachable_centers():
+    from diplo.engine import growth_text
+    g = new_game()
+    txt = growth_text(g, "FRANCE")
+    assert "You have 3 centers" in txt and "SPA (unowned, empty): A MAR - SPA" in txt
+    snap = snapshot(g, "FRANCE")
+    assert snap.growth_text == txt
+    g.process()  # spring with no orders -> fall: still no gain, no "since the game began" yet
+    assert "have not gained" not in growth_text(g, "FRANCE")
+
+
+def test_resume_without_substitute(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "_live_client",
+                        lambda a: AnthropicClient(a.model, a.effort, client=FakeAnthropic(scripted_responder)))
+    cli.main(["sim", "--max-year", "1901", "--press-rounds", "1", "--seed", "1", "--out", str(tmp_path / "o")])
+    game_dir = next((tmp_path / "o").iterdir()) / "game-001"
+    cli.main(["resume", str(game_dir), "--at", "F1901M", "--years", "1", "--out", str(tmp_path / "r")])
+    rdir = next((tmp_path / "r").iterdir())
+    assert rdir.name.startswith("resume-all-")
+    res = next(e for e in load_events(rdir / "events.jsonl") if e["event"] == "resume")
+    assert res["substitute"] is None and res["handover_chars"] == 0
+    assert "## Resumed game" in aggregate(rdir) and "## Substitution" not in aggregate(rdir)

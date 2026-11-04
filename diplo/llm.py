@@ -45,6 +45,7 @@ class Usage:
     cache_write_tokens: int = 0
     refusals: int = 0
     api_errors: int = 0
+    max_tokens_retries: int = 0
     cost_usd: float = 0.0
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
@@ -72,6 +73,7 @@ class Usage:
             "cache_write_tokens": self.cache_write_tokens,
             "refusals": self.refusals,
             "api_errors": self.api_errors,
+            "max_tokens_retries": self.max_tokens_retries,
             "cost_usd": round(self.cost_usd, 4),
         }
 
@@ -154,6 +156,9 @@ class AnthropicClient(LLMClient):
             self.usage.bump("refusals")
             raise LLMError("model declined the request (refusal)")
         if resp.stop_reason == "max_tokens":
+            if max_tokens < 32000:  # one retry with room to finish (the cost of both calls is counted)
+                self.usage.bump("max_tokens_retries")
+                return self._call(system, user, schema, min(32000, max_tokens * 2))
             raise LLMError("response hit max_tokens before finishing")
         text = next((b.text for b in resp.content if b.type == "text"), "")
         return _parse_json(text), tokens

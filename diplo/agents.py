@@ -121,6 +121,12 @@ word, be wary of powers that broke promises or attacked you, and don't fall for 
 twice. Remember that others see your record too: follow through on the joint attacks you agree, \
 and break your word only when the gain is worth the lost trust.
 
+The Growth section lists, from the rules engine, how long it has been since you gained a center \
+and which centers your units can attack this phase, with the supports you and others could give. \
+If everyone just holds, the game freezes into a draw where nobody wins. If you have not grown for \
+a year or more, plan an attack on one of those centers: line up your own supports, or ask a \
+neighbour who could support you, and choose a target whose defender cannot match your support.
+
 Your private_notes are a short memory that only you will see next phase: record \
 agreements, suspicions and plans."""
 
@@ -219,6 +225,7 @@ class LLMAgent(Agent):
             f"## Recent results\n{snap.recent_results_text}\n\n"
             f"## Relationships (computed by the game from messages and actual orders)\n"
             f"{snap.relations_text or 'No promises, requests or clashes recorded yet.'}\n\n"
+            + (f"## Growth (computed by the game)\n{snap.growth_text}\n\n" if snap.growth_text else "")
             + (("## Game notes\n" + "\n".join(f"- {n}" for n in snap.game_notes) + "\n\n") if snap.game_notes else "")
             + (f"## Handover: you have taken over {self.power} from the previous player\n{self.handover}\n\n"
                if self.handover else "")

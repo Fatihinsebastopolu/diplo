@@ -77,6 +77,8 @@ class PhaseSnapshot:
     game_notes: list[str] = field(default_factory=list)  # public announcements, e.g. a substitution
     win_centers: int = 18
     n_powers: int = 7
+    # Movement phases: years since this power last gained a center, and centers it can attack now.
+    growth_text: str = ""
 
 
 def alive_powers(game: Game) -> list[str]:
@@ -163,7 +165,103 @@ def snapshot(game: Game, power: str, all_orders: dict | None = None) -> PhaseSna
         map_name=map_label(game),
         win_centers=win_centers(game),
         n_powers=len(game.powers),
+        growth_text=growth_text(game, power, all_orders) if game.phase_type == "M" else "",
     )
+
+
+MAX_TARGETS = 6
+
+
+def _last_gain(game: Game, power: str) -> tuple[int | None, int]:
+    """(year of the last winter in which `power` ended with more centers than before, centers now)."""
+    prev, last = None, None
+    for ph, st in game.state_history.items():
+        ph = str(ph)
+        if not ph.endswith("A") and not ph.endswith("M"):
+            continue
+        n = len(st["centers"].get(power, []))
+        if prev is not None and n > prev:
+            last = phase_year(ph)
+        prev = n
+    now = len(game.get_centers(power))
+    if prev is not None and now > prev:
+        last = phase_year(game.get_current_phase()) - (1 if game.get_current_phase().startswith("S") else 0)
+    return last, now
+
+
+def growth_text(game: Game, power: str, all_orders: dict | None = None) -> str:
+    """Computed by code: how long since this power grew, and which centers it can attack this phase.
+
+    A target is a supply center the power doesn't own that one of its units can legally move into. For
+    each one it lists the defender, its own units that can support the move, and other powers' units
+    that could (a partner to ask).
+    """
+    all_orders = all_orders if all_orders is not None else game.get_all_possible_orders()
+    year = phase_year(game.get_current_phase()) or 0
+    last, now = _last_gain(game, power)
+    start_year = phase_year(str(next(iter(game.state_history.keys()), game.get_current_phase()))) or year
+    if last is None:
+        lead = (f"You have {now} centers and have not gained one since the game began."
+                if year - start_year >= 2 else f"You have {now} centers.")
+    else:
+        gap = year - last - 1
+        lead = (f"You have {now} centers; your last gain was in {last}" +
+                (f", {gap} full game year(s) ago." if gap >= 1 else "."))
+    owner = {c: p for p in game.powers for c in game.get_centers(p)}
+    unit_owner = {u.split()[1].split("/")[0]: (p, u) for p in game.powers for u in game.get_units(p)}
+    scs = set(game.map.scs)
+    mine = list(game.get_units(power))
+    targets = {}
+    for u in mine:
+        loc = u.split()[1]
+        for o in all_orders.get(loc, []):
+            parts = o.split()
+            if len(parts) == 4 and parts[2] == "-":
+                dest = parts[3].split("/")[0]
+                if dest in scs and owner.get(dest) != power:
+                    targets.setdefault(dest, []).append(o)
+    if not targets:
+        return lead + " None of your units can reach a center you don't own this phase."
+    def supporters(move: str, exclude: set) -> tuple[list[str], list[str]]:
+        own, other = [], []
+        for loc, os_ in all_orders.items():
+            who = unit_owner.get(loc.split("/")[0])
+            if not who or who[0] in exclude or not any(o.endswith(" S " + move) for o in os_):
+                continue
+            (own if who[0] == power else other).append(who[1] if who[0] == power else f"{who[0]}'s {who[1]}")
+        return sorted(set(own)), sorted(set(other))
+
+    rows = []
+    for dest, moves in targets.items():
+        occ = unit_owner.get(dest)
+        if occ and occ[0] == power:
+            continue  # own unit sits there (center not yet captured): no attack needed
+        defenders = {x for x in (occ[0] if occ else None, owner.get(dest)) if x}
+        best = None
+        for mv in moves:  # the move with the most support
+            own, other = supporters(mv, defenders)
+            own = [u for u in own if u != " ".join(mv.split()[:2])]
+            if best is None or (len(own), len(other)) > (len(best[1]), len(best[2])):
+                best = (mv, own, other)
+        mv, own, other = best
+        hold = 0
+        if occ:
+            hold = sum(1 for loc, os_ in all_orders.items()
+                       if (unit_owner.get(loc.split("/")[0]) or ("",))[0] == occ[0]
+                       and any(o.endswith(" S " + occ[1]) for o in os_))
+        held = (f"held by {occ[0]}'s {occ[1]}, which its owner can support with up to {hold} unit(s)"
+                if occ else "empty")
+        whose = f"{owner[dest]}'s" if dest in owner else "unowned"
+        r = f"- {dest} ({whose}, {held}): {mv}"
+        r += f"; your {', '.join(own)} can support it" if own else "; none of your other units can support it"
+        if other:
+            r += "; a partner could support it: " + ", ".join(other)
+        rows.append(((not occ), len(own) > hold, len(own) + 0.5 * len(other) - hold, r))
+    rows = [x[-1] for x in sorted(rows, key=lambda x: x[:3], reverse=True)][:MAX_TARGETS]
+    if not rows:
+        return lead
+    return (lead + "\nCenters you could attack this phase (legal moves; to dislodge a defender, your supports "
+            "must outnumber its supports):\n" + "\n".join(rows))
 
 
 @dataclass
