@@ -598,3 +598,15 @@ def test_png_label_sizes_come_from_each_maps_css():
     assert 'id="CurrentPhase"' in std and 'font-size="40" fill="black" id="CurrentPhase"' in std   # 2.5em
     assert 'font-size="18" fill="black" id="CurrentPhase"' in anc                                    # 18px
     assert 'class="currentnoterect"' not in anc and 'fill="#c5dfea"' in anc
+
+
+def test_custom_map_file_example(tmp_path, monkeypatch):
+    from pathlib import Path as _P
+    path = str(_P(__file__).resolve().parents[1] / "examples" / "maps" / "turkey_fleet_smyrna.map")
+    g = new_game(path)
+    assert "F SMY" in g.get_units("TURKEY") and len(g.powers) == 7
+    cli.main(["sim", "--map", path, "--years", "1", "--press-rounds", "0",
+              "--random", "A,E,F,G,I,R,T", "--seed", "3", "--out", str(tmp_path)])
+    s = json.loads(next(tmp_path.rglob("summary.json")).read_text())
+    assert s["final_phase"] == "S1902M" and s["map"].endswith("turkey_fleet_smyrna.map")
+    assert list(tmp_path.rglob("maps/*.svg"))  # inherits the standard drawing

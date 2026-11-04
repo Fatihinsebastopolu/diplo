@@ -27,6 +27,14 @@ def win_centers(game: Game) -> int:
     return len(game.map.scs) // 2 + 1
 
 
+def map_label(game: Game) -> str:
+    """Short map name for prompts and titles: 'standard', 'ancmed', or a custom file's stem."""
+    import os
+
+    name = os.path.basename(game.map.name)
+    return name[:-4] if name.endswith(".map") else name
+
+
 def map_powers(map_name: str = "standard") -> list[str]:
     return list(new_game(map_name).powers)
 
@@ -151,7 +159,7 @@ def snapshot(game: Game, power: str, all_orders: dict | None = None) -> PhaseSna
         units=units,
         all_legal_by_loc=all_orders,
         valid_locs=frozenset(l.upper() for l in game.map.locs),
-        map_name=game.map.name,
+        map_name=map_label(game),
         win_centers=win_centers(game),
         n_powers=len(game.powers),
     )

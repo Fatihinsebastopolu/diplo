@@ -43,6 +43,31 @@ export ANTHROPIC_API_KEY=sk-ant-...      # needed only for live Claude agents
 python -m pytest -q                      # offline tests, no key needed
 ```
 
+## Custom maps (for variant designers)
+
+`--map` also takes a path to a `.map` file, in the `diplomacy` package's map format. No
+code changes and no package plugin are needed:
+
+```bash
+python -m diplo sim --map examples/maps/turkey_fleet_smyrna.map --years 3 --games 5
+```
+
+`examples/maps/turkey_fleet_smyrna.map` is a 50-line example (10 of them comments): the standard board, but
+Turkey starts with a fleet in Smyrna instead of an army. It starts with
+`MAP standard.map`, which inherits the standard provinces, adjacencies, supply centers
+and drawing. It then resets ownership and lists each power's home centers and starting
+units. Change those lines to test a different setup (who plays, home centers, starting
+units). For a new geography, write a full map file, using the package's `standard.map`
+as the template.
+
+- **Board images.** A map that inherits `standard.map` (or another bundled map)
+  reuses that map's drawing. A wholly new geography plays fine but has no images,
+  unless an SVG drawing with the same name is added to the package's `maps/svg` folder.
+- **First load.** The engine builds a one-time convoy-path cache for a new map, which
+  takes a few seconds.
+- **Rules.** Rule changes beyond what the map format expresses (new unit types, other
+  victory conditions) would need changes to the rules engine itself.
+
 ## Reproducing a game without an API key
 
 Every game with model agents writes a `recording.jsonl` next to its log. The file
@@ -240,8 +265,8 @@ characters). It also sees the last 40 messages it sent or received.
 - **No personality settings yet.** The truthfulness, aggressiveness and talkativeness
   settings proposed in Milestone 1 are not implemented. `--silent` is the only
   behaviour control.
-- **Variants: only the `diplomacy` package's maps.** There's no format yet for loading
-  a designer's own map. The abuse scenarios (`scenario`) are standard-map only, since
+- **Variants are limited to what the `.map` format can express.** A new geography has
+  no board images unless a drawing is added. The abuse scenarios (`scenario`) are standard-map only, since
   they assume France and Germany are neighbours.
 - **No time limits.** Negotiation is a fixed number of simultaneous rounds; there are
   no deadlines or real-time chat.

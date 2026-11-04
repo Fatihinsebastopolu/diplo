@@ -1,0 +1,50 @@
+# Example custom variant for diplo: the standard board, but Turkey starts with
+# a fleet in Smyrna instead of an army. A designer could test whether a second
+# Turkish fleet shifts power-by-power results.
+#
+# Run it:  python -m diplo sim --map examples/maps/turkey_fleet_smyrna.map --years 3
+#
+# Format: the diplomacy package's .map format. "MAP standard.map" inherits the
+# standard board (provinces, adjacencies, supply centers, drawing); the lines
+# below reset ownership and then list each power's home centers and units.
+MAP standard.map
+UNPLAYED AUSTRIA, ENGLAND, FRANCE, GERMANY, ITALY, RUSSIA, TURKEY
+
+UNOWNED                    BUD TRI VIE EDI LON LVP BRE MAR PAR BER KIE MUN NAP ROM VEN MOS SEV STP WAR ANK CON SMY
+UNOWNED                    BEL BUL DEN GRE HOL NWY POR RUM SER SPA SWE TUN
+
+AUSTRIA     (AUSTRIAN)     BUD TRI VIE
+A BUD
+A VIE
+F TRI
+
+ENGLAND     (ENGLISH)      EDI LON LVP
+F EDI
+F LON
+A LVP
+
+FRANCE      (FRENCH)       BRE MAR PAR
+F BRE
+A MAR
+A PAR
+
+GERMANY     (GERMAN)       BER KIE MUN
+F KIE
+A BER
+A MUN
+
+ITALY       (ITALIAN)      NAP ROM VEN
+F NAP
+A ROM
+A VEN
+
+RUSSIA      (RUSSIAN)      MOS SEV STP WAR
+A WAR
+A MOS
+F SEV
+F STP/SC
+
+TURKEY      (TURKISH)      ANK CON SMY
+F ANK
+A CON
+F SMY
