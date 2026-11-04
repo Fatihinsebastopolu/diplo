@@ -96,7 +96,8 @@ as before. The substitute starts with empty notes and a **handover** in its prom
   don't turn on a partner just because the player changed.
 
 By default the other players get a game note that a substitute has taken over; turn
-it off with `--no-announce`. The resumed game's log includes the earlier phases, so its
+it off with `--no-announce`. Add `--live` to follow the game on the live board from the
+substitute's seat, with the handover shown beside the map (also when replaying it). The resumed game's log includes the earlier phases, so its
 viewer shows the whole game. It copies its source log, so it can be replayed on its own
 with `sim --replay`. Its `report.md` gives the handover size, which is the takeover
 overhead, and a **fairness check**: a table that profiles the power before the takeover
@@ -262,6 +263,8 @@ map images are not committed; `python -m diplo view results/<dir>` regenerates t
 | `claude-sonnet-5-5-1910` | All 7 powers on Sonnet 5.5, effort medium | Est. **$8.47**, 479 API calls, 432 s. 0/720 illegal orders reached the engine (4 repaired), 0/1,177 illegal proposals. 49% of unit-orders moved, supported or convoyed; 39 units dislodged; Austria and Germany eliminated; France 10, Russia 9 centers. |
 | `haiku-low-negotiating-1910` | All 7 powers on Haiku 5.5, effort low | Est. **$0.48**, 469 API calls, 551 s, 618 messages. 0 illegal orders or proposals. |
 | `haiku-low-silent-france-1910` | Same, but France never writes messages (`--silent FRANCE`); it still reads them and gives orders | Est. **$0.42**, 415 API calls, 482 s, 508 messages. 0 illegal orders or proposals. |
+| `claude-sonnet-5-5-ancmed-10y` | All 5 powers on Sonnet 5.5 on the `ancmed` variant, years 1–10 | Est. **$5.60**, 349 s. 0/578 illegal orders reached the engine (4 repaired), 0/736 illegal proposals. 35% of unit-orders active, 18 units dislodged; Greece and Persia 8 centers each, Egypt 4. |
+| `haiku-resume-france-1905` | `claude-haiku-5-5-1910` resumed at S1905M with a substitute agent for France, 2 years | Est. $0.13. The report's fairness check: the substitute kept 90% of its proposals (79% before) but moved none of its units (15% before). |
 
 **Negotiating agents vs one order-only agent** (the last two rows, one game each). Taking
 negotiation away from one of seven seats saved $0.06 per game (13%) and 54 API calls.
