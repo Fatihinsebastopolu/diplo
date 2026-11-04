@@ -94,8 +94,19 @@ By default the other players get a game note that a substitute has taken over; t
 it off with `--no-announce`. The resumed game's log includes the earlier phases, so its
 viewer shows the whole game. It copies its source log, so it can be replayed on its own
 with `sim --replay`. Its `report.md` gives the handover size, which is the takeover
-overhead. Logs made before agent notes were logged resume with empty notes for
-everyone.
+overhead, and a **fairness check**: a table that profiles the power before the takeover
+(the previous player) and after it (the substitute) with the same code. It compares
+promise keeping, contradictory plans, unit activity, messages, supports given, closest
+partner and main rival, attacks on the previous partner, and supply centers. Because the
+profile is computed only from the log, it works the same whichever kind of player
+dropped out. Rates are per movement phase, but the two spans cover different stages of
+the game (openings are usually more active), so read the table as a check for abrupt
+changes, not as a score.
+
+Every game logs each agent's private notes after every phase, from the first phase
+onward, so a game can be resumed from any phase with everyone's memory intact. (Logs
+made before this logging was added resume with empty notes.) A human taking over a
+seat mid-game is not supported in this prototype; the substitute is always an agent.
 
 ## Reproducing a game without an API key
 
@@ -150,7 +161,7 @@ Common options (for both `sim` and `play`):
 | `--live`, `--live-port`, `--live-delay` | Serve a live board at `http://localhost:8765` (or another port) while the game runs. `--live-delay` pauses after each phase so a replay can be watched. |
 | `--effort` | `low`, `medium` (the default), `high`, `xhigh` or `max`. Higher effort is slower and costs more. |
 | `--map` | A map from the `diplomacy` package: `standard` (the default), `ancmed` (5 powers), `modern` (10), `pure` (7 powers, 7 centers), `standard_france_austria` (2 players), and others. Maps without a drawing (e.g. `world`) still play, but have no board images. |
-| `--years` | Game years to play, counted from the map's own start year (default 5). Variants start in different years: `ancmed` in year 1, `modern` in 1994. |
+| `--years` | Game years to play, counted from the map's own start year (default 10, i.e. to 1910 on the standard map). Variants start in different years: `ancmed` in year 1, `modern` in 1994. |
 | `--max-year` | Stop after this year's winter adjustments, overriding `--years`. A game also stops early on a solo win, which means a majority of the map's centers (18 of 34 on the standard map). |
 | `--press-rounds` | Negotiation rounds per movement phase (default 2; 0 means no press). |
 | `--random POWERS` | Powers played by the random baseline instead of the LLM, e.g. `--random ITA,TUR`. |

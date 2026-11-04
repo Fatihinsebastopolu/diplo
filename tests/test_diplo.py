@@ -650,3 +650,9 @@ def test_resume_with_substitute_and_replay(tmp_path, monkeypatch):
     cli.main(["sim", "--replay", str(rdir), "--out", str(tmp_path / "rep")])
     rep = json.loads(next((tmp_path / "rep").rglob("summary.json")).read_text())
     assert rep["centers"] == s["centers"] and rep["final_phase"] == s["final_phase"]
+    # fairness check: the same profile code measures the previous player and the substitute
+    from diplo.handover import compare_substitute
+    cmp = compare_substitute(ev, "FRANCE", "S1902M")
+    assert cmp["before"]["movement_phases"] == 2 and cmp["after"]["movement_phases"] == 2
+    assert cmp["after"]["centers_start"] == cmp["before"]["centers_end"]
+    assert "Fairness check: FRANCE" in aggregate(rdir)

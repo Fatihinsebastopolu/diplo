@@ -310,7 +310,7 @@ def main(argv=None):
     def common(p):
         p.add_argument("--map", default="standard",
                        help="map from the diplomacy package, e.g. standard, ancmed (5 powers), modern (10), pure (7)")
-        p.add_argument("--years", type=int, default=5,
+        p.add_argument("--years", type=int, default=10,
                        help="game years to play, counted from the map's start year (default %(default)s)")
         p.add_argument("--model", default=DEFAULT_CLAUDE_MODEL,
                        help=f"Claude model ID (default {DEFAULT_CLAUDE_MODEL})")

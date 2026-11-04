@@ -8,6 +8,7 @@ from pathlib import Path
 from .engine import POWERS
 
 
+from .handover import compare_substitute, comparison_markdown
 from .viewer import activity, analyse_promises, load_events, promise_totals, promises_markdown, rebuild
 
 
@@ -189,8 +190,9 @@ def aggregate(run_dir: Path) -> str:
            f"final center spread (max - min) per game: {spreads}."]
     pt = promise_totals(claims, POWERS)
     tcr = [timing_cost_replies(load_events(p)) for p in sorted(Path(run_dir).rglob("events.jsonl"))]
-    resumes = [e for p in sorted(Path(run_dir).rglob("events.jsonl")) for e in load_events(p) if e["event"] == "resume"]
-    for r in resumes:
+    resumes = [(e, ev) for p in sorted(Path(run_dir).rglob("events.jsonl")) for ev in [load_events(p)]
+               for e in ev if e["event"] == "resume"]
+    for r, ev in resumes:
         md += ["", "## Substitution", "",
                f"- {r['substitute']} was taken over by a substitute agent from {r['at']} "
                f"({'announced to the other players' if r['announce'] else 'not announced'}).",
@@ -198,6 +200,10 @@ def aggregate(run_dir: Path) -> str:
                f"added to each of the substitute's prompts; this is the takeover overhead.",
                f"- Private notes restored for: {', '.join(r['restored_notes_for']) or 'none (older log)'}.",
                "- Cost and time below cover the whole game, including the part played before the substitution."]
+        try:
+            md += comparison_markdown(r["substitute"], compare_substitute(ev, r["substitute"], r["at"]))
+        except Exception as exc:  # an old or partial log should still produce a report
+            md += ["", f"(fairness comparison unavailable: {exc})"]
     years = sorted({y for t in tcr for y in t["cost_by_year"]})
     if years:
         md += ["", "## Cost and time by game year", "",
