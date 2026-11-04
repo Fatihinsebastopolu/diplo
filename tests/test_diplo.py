@@ -650,7 +650,7 @@ def test_resume_with_substitute_and_replay(tmp_path, monkeypatch):
     assert views[0].phase == "S1901M" and views[-1].phase == "W1902A" or views[-1].phase.startswith("F1902")
     # the resumed game replays with no API
     monkeypatch.setattr(cli, "_live_client", None)
-    cli.main(["sim", "--replay", str(rdir), "--out", str(tmp_path / "rep")])
+    cli.main(["sim", "--replay", str(rdir), "--out", str(tmp_path / "rep"), "--live", "--live-port", "0"])
     rep = json.loads(next((tmp_path / "rep").rglob("summary.json")).read_text())
     assert rep["centers"] == s["centers"] and rep["final_phase"] == s["final_phase"]
     # fairness check: the same profile code measures the previous player and the substitute
@@ -742,6 +742,7 @@ def test_live_page_runs_in_a_real_browser():
         g = new_game()
         board.phase_start(g, g.get_current_phase())
         board.relations({"FRANCE": "ENGLAND: kept 1 of 1 promises to you.\nGERMANY: attacked you 1 time(s)."})
+        board._update(note_title="Handover given to the substitute", note="Line one.\nLine two.")
         exe = _find_browser()
         cwd = "/mnt/c" if exe.startswith("/mnt/") else None  # Windows programs need a Windows working directory
         out = subprocess.run([exe, "--headless=new", "--disable-gpu", "--virtual-time-budget=8000", "--dump-dom",
@@ -751,6 +752,7 @@ def test_live_page_runs_in_a_real_browser():
     assert 'data-conn="live"' in out, "the page script did not run or could not fetch /state"
     assert 'data-board="loaded"' in out, "the board image did not load"
     assert "ENGLAND: kept 1 of 1 promises to you.<br>GERMANY" in out
+    assert "Line one.<br>Line two." in out and "Handover given to the substitute" in out
 
 
 def test_growth_note_is_identical_in_every_process():

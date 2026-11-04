@@ -159,8 +159,10 @@ def _replay(args):
         print(f"[diplo] replaying {f} -> {gdir} (no API calls)")
         if meta.get("resume"):
             r = meta["resume"]
-            s, _ = _resume_game(args, f.parent / r["source"], r["at"], r["substitute"], r["announce"], gdir,
-                                ReplayClient(args.model, by_key))
+            s, handover = _resume_game(args, f.parent / r["source"], r["at"], r["substitute"], r["announce"], gdir,
+                                       ReplayClient(args.model, by_key))
+            if handover:
+                print("\n--- handover given to the substitute ---\n" + handover + "\n---")
             _print_result(s)
             continue
         _print_result(_play_one_game(args, gdir, meta["game_seed"], human=meta.get("human"),
@@ -230,8 +232,15 @@ def _resume_game(args, source: Path, at: str, sub: str, announce: bool, gdir: Pa
         agents[sub].handover = handover
     config = {k: getattr(args, k, None) for k in GAME_OPTIONS}
     config.update(resumed_from=str(source), at=at, substitute=sub, announce=announce)
+    board = getattr(args, "_board", None)
+    if board is not None:  # follow the game from the substitute's seat (or as a spectator)
+        board.viewer_power = sub
+        board.title = (f"{'Replay: ' if isinstance(llm, ReplayClient) else ''}"
+                       + (f"Substitute for {sub.title()} from {at}" if sub else f"Resumed from {at}"))
+        board._update(title=board.title, viewer=sub, messages=[], results=[],
+                      note_title="Handover given to the substitute" if handover else "", note=handover)
     runner = GameRunner(agents, gdir, max_year=args.max_year, press_rounds=args.press_rounds,
-                        map_name=args.map, llm=llm, config=config, max_cost=args.max_cost)
+                        map_name=args.map, llm=llm, config=config, max_cost=args.max_cost, observer=board)
     runner.game, runner.press, runner.ledger = game, press, ledger
     if announce and sub:
         runner.game_notes = [f"{sub} is now played by a substitute player, from {at} on."]
@@ -376,6 +385,9 @@ def main(argv=None):
     p.add_argument("--max-cost", type=float, default=None, metavar="USD")
     p.add_argument("--random", default=None, help=argparse.SUPPRESS)
     p.add_argument("--silent", default=None, help=argparse.SUPPRESS)
+    p.add_argument("--live", action="store_true", help="serve a live board while the game runs")
+    p.add_argument("--live-port", type=int, default=8765)
+    p.add_argument("--live-delay", type=float, default=0.0, help="seconds to pause after each phase")
     p.add_argument("--out", default="runs")
     p.set_defaults(fn=cmd_resume, replay=None)
 

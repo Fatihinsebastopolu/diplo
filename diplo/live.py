@@ -148,6 +148,8 @@ PAGE = (
 <table id="centers"></table>
 <div id="relbox" style="display:none"><h3>Relationships</h3>
 <div class="muted results" id="relations"></div></div>
+<div id="notebox" style="display:none"><h3 id="notetitle"></h3>
+<div class="muted results" id="note"></div></div>
 <h3>Last results</h3><div class="results muted" id="results"></div>
 <h3 id="msgtitle">Messages</h3><div id="msgs"></div>
 </div></div></section></main>
@@ -181,6 +183,10 @@ async function poll() {
         POWERS.map(p => `<tr><td>${dot(p)}</td><td>${s.centers[p] ?? ''}</td></tr>`).join('');
       document.getElementById('results').innerHTML = s.results.length
         ? `<b>${esc(s.last_phase || '')}</b><br>` + s.results.map(esc).join('<br>') : 'none yet';
+      const note = s.note || '';
+      document.getElementById('notebox').style.display = note ? '' : 'none';
+      document.getElementById('notetitle').textContent = s.note_title || '';
+      document.getElementById('note').innerHTML = note.split('\\n').map(esc).join('<br>');
       const rel = s.relations || '';
       document.getElementById('relbox').style.display = rel ? '' : 'none';
       document.getElementById('relations').innerHTML = rel.split('\\n').map(esc).join('<br>');
