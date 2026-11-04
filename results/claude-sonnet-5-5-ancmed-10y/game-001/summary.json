@@ -1,0 +1,123 @@
+{
+  "config": {
+    "map": "ancmed",
+    "model": "claude-sonnet-5-5",
+    "effort": "medium",
+    "max_year": 10,
+    "press_rounds": 2,
+    "random": null,
+    "silent": null,
+    "max_cost": 9.0,
+    "game_seed": 1422857022,
+    "human": null,
+    "replayed": false
+  },
+  "map": "ancmed",
+  "final_phase": "S0011M",
+  "phases_played": 40,
+  "solo_winner": null,
+  "leaders": [
+    "GREECE",
+    "PERSIA"
+  ],
+  "centers": {
+    "CARTHAGE": 6,
+    "EGYPT": 4,
+    "GREECE": 8,
+    "PERSIA": 8,
+    "ROME": 6
+  },
+  "eliminated": [],
+  "agents": {
+    "CARTHAGE": "llm",
+    "EGYPT": "llm",
+    "GREECE": "llm",
+    "PERSIA": "llm",
+    "ROME": "llm"
+  },
+  "stats": {
+    "CARTHAGE": {
+      "messages_sent": 97,
+      "proposals": 143,
+      "illegal_proposals": 0,
+      "illegal_proposals_first_pass": 3,
+      "proposal_repairs_succeeded": 3,
+      "messages_dropped": 0,
+      "orders_submitted": 112,
+      "orders_accepted": 112,
+      "illegal_first_pass": 0,
+      "repairs_succeeded": 0,
+      "illegal_final": 0,
+      "agent_failures": 0
+    },
+    "EGYPT": {
+      "messages_sent": 79,
+      "proposals": 168,
+      "illegal_proposals": 0,
+      "illegal_proposals_first_pass": 5,
+      "proposal_repairs_succeeded": 4,
+      "messages_dropped": 1,
+      "orders_submitted": 93,
+      "orders_accepted": 93,
+      "illegal_first_pass": 0,
+      "repairs_succeeded": 0,
+      "illegal_final": 0,
+      "agent_failures": 0
+    },
+    "GREECE": {
+      "messages_sent": 89,
+      "proposals": 156,
+      "illegal_proposals": 0,
+      "illegal_proposals_first_pass": 3,
+      "proposal_repairs_succeeded": 3,
+      "messages_dropped": 0,
+      "orders_submitted": 110,
+      "orders_accepted": 110,
+      "illegal_first_pass": 1,
+      "repairs_succeeded": 1,
+      "illegal_final": 0,
+      "agent_failures": 0
+    },
+    "PERSIA": {
+      "messages_sent": 76,
+      "proposals": 146,
+      "illegal_proposals": 0,
+      "illegal_proposals_first_pass": 7,
+      "proposal_repairs_succeeded": 5,
+      "messages_dropped": 0,
+      "orders_submitted": 145,
+      "orders_accepted": 145,
+      "illegal_first_pass": 1,
+      "repairs_succeeded": 1,
+      "illegal_final": 0,
+      "agent_failures": 0
+    },
+    "ROME": {
+      "messages_sent": 100,
+      "proposals": 123,
+      "illegal_proposals": 0,
+      "illegal_proposals_first_pass": 1,
+      "proposal_repairs_succeeded": 1,
+      "messages_dropped": 0,
+      "orders_submitted": 118,
+      "orders_accepted": 118,
+      "illegal_first_pass": 2,
+      "repairs_succeeded": 2,
+      "illegal_final": 0,
+      "agent_failures": 0
+    }
+  },
+  "usage": {
+    "calls": 354,
+    "input_tokens": 2199067,
+    "output_tokens": 106938,
+    "cache_read_tokens": 501510,
+    "cache_write_tokens": 14381,
+    "refusals": 0,
+    "api_errors": 0,
+    "max_tokens_retries": 0,
+    "cost_usd": 5.6038
+  },
+  "wall_seconds": 349.0,
+  "stopped_reason": null
+}
