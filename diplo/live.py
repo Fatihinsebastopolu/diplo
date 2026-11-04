@@ -143,7 +143,7 @@ PAGE = (
 <div class="muted"><b id="phase"></b> &middot; <span class="status" id="status">connecting...</span>
 <span class="conn" id="conn"></span></div></header>
 <main><section><div class="grid">
-<div class="map"><img id="board" alt="Current board"></div>
+<div class="map"><img id="board" alt="Current board"><div class="warn" id="boarderr"></div></div>
 <div>
 <table id="centers"></table>
 <div id="relbox" style="display:none"><h3>Relationships</h3>
@@ -157,11 +157,18 @@ let POWERS = """ + json.dumps(POWERS) + """;
 let version = -1;
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dot = p => `<span class="dot" style="background:${COLORS[p]||'#999'}"></span>${esc(p[0] + p.slice(1).toLowerCase())}`;
+const img = document.getElementById('board');
+img.onload = () => { document.body.dataset.board = 'loaded'; document.getElementById('boarderr').textContent = ''; };
+img.onerror = () => {
+  document.body.dataset.board = 'error';
+  document.getElementById('boarderr').textContent = 'The board image could not be shown (this map may have no drawing).';
+};
 async function poll() {
   try {
     const r = await fetch('/state', {cache: 'no-store'});
     const s = await r.json();
     document.getElementById('conn').textContent = 'live';
+    document.body.dataset.conn = 'live';
     if (s.version !== version) {
       version = s.version;
       if (s.title) document.getElementById('title').textContent = s.title;
@@ -176,7 +183,7 @@ async function poll() {
         ? `<b>${esc(s.last_phase || '')}</b><br>` + s.results.map(esc).join('<br>') : 'none yet';
       const rel = s.relations || '';
       document.getElementById('relbox').style.display = rel ? '' : 'none';
-      document.getElementById('relations').innerHTML = rel.split('\n').map(esc).join('<br>');
+      document.getElementById('relations').innerHTML = rel.split('\\n').map(esc).join('<br>');
       document.getElementById('msgtitle').textContent = s.viewer ? `Messages to and from ${s.viewer}` : 'Messages (all powers)';
       const box = document.getElementById('msgs');
       box.innerHTML = s.messages.slice().reverse().map(m =>

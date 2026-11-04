@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import random
 from types import SimpleNamespace
 
@@ -706,3 +707,47 @@ def test_human_is_told_about_own_illegal_proposal():
     msgs = h.negotiate(snapshot(g, "FRANCE"), [], 0, 1)
     notes = [p for p in printed if p.startswith("  (note:")]
     assert len(msgs) == 1 and len(notes) == 1 and "A PAR - MUN" in notes[0] and "GERMANY will see" in notes[0]
+
+
+def test_live_page_script_has_no_broken_string_literals():
+    from diplo.live import PAGE
+    js = PAGE.split("<script>")[1].split("</script>")[0]
+    # a raw newline inside a quoted JS string breaks the whole script ("connecting..." forever)
+    assert not [line for line in js.split("\n") if line.count("'") % 2]
+    assert "split('\\n')" in js
+
+
+
+def _find_browser():
+    """A Chromium-based browser for the live page test: Linux Chrome/Chromium/Edge, or Windows Edge/Chrome under WSL."""
+    import shutil
+    for name in ("chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "microsoft-edge"):
+        if shutil.which(name):
+            return shutil.which(name)
+    for path in ("/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+                 "/mnt/c/Program Files/Microsoft/Edge/Application/msedge.exe",
+                 "/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"):
+        if Path(path).exists():
+            return path
+    return None
+
+
+@pytest.mark.skipif(_find_browser() is None, reason="no Chromium-based browser found for the live page test")
+def test_live_page_runs_in_a_real_browser():
+    """End to end: the page's script runs, fetches the state, and the board image actually renders."""
+    import subprocess
+    from diplo.live import LiveBoard
+    board = LiveBoard(port=0, viewer_power="FRANCE", title="browser test").start()
+    try:
+        g = new_game()
+        board.phase_start(g, g.get_current_phase())
+        board.relations({"FRANCE": "ENGLAND: kept 1 of 1 promises to you.\nGERMANY: attacked you 1 time(s)."})
+        exe = _find_browser()
+        cwd = "/mnt/c" if exe.startswith("/mnt/") else None  # Windows programs need a Windows working directory
+        out = subprocess.run([exe, "--headless=new", "--disable-gpu", "--virtual-time-budget=8000", "--dump-dom",
+                              board.url], capture_output=True, text=True, timeout=90, cwd=cwd).stdout
+    finally:
+        board.stop()
+    assert 'data-conn="live"' in out, "the page script did not run or could not fetch /state"
+    assert 'data-board="loaded"' in out, "the board image did not load"
+    assert "ENGLAND: kept 1 of 1 promises to you.<br>GERMANY" in out

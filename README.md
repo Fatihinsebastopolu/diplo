@@ -44,6 +44,10 @@ export ANTHROPIC_API_KEY=sk-ant-...      # needed only for live Claude agents
 python -m pytest -q                      # offline tests, no key needed
 ```
 
+One test loads the live board in a headless Chromium-based browser (Chrome, Chromium or
+Edge, including Windows Edge under WSL) and checks that the page's script runs and the
+map image renders. It is skipped if no such browser is installed.
+
 ## Custom maps (for variant designers)
 
 `--map` also takes a path to a `.map` file, in the `diplomacy` package's map format. No
@@ -176,7 +180,10 @@ orders drawn once orders are revealed, plus center counts, the last phase's resu
 and messages. In `play` mode it shows only messages you sent or received, so it
 reveals nothing you couldn't see anyway. In `sim` mode it shows every message. The
 server listens only on this machine (127.0.0.1). It stays up after the game until you
-press Enter. Under WSL, the Windows browser can open `localhost` directly.
+press Enter. Under WSL, the Windows browser can open `localhost` directly, with no
+extra setup. If the page won't load at all, WSL's port forwarding may have missed that
+port; restart with another port (e.g. `--live-port 8766`) or run `wsl --shutdown` in
+PowerShell and reopen the terminal.
 
 **Relationship ledger.** After every movement phase the game records, from each
 power's point of view, what every other power said versus what it actually ordered:
